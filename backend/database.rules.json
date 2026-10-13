@@ -1,0 +1,71 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "codes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.isString() && $code.matches(/^[A-Z0-9]{6}$/)"
+      }
+    },
+
+    "rides": {
+      "$rideId": {
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && !data.exists() && newData.child('createdBy').val() === auth.uid",
+          "locked": {
+            ".write": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()",
+            ".validate": "newData.isBoolean()"
+          },
+          "lastActivityAt": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).exists()",
+            ".validate": "newData.isNumber()"
+          },
+          "endedAt": {
+            ".write": "auth != null && data.parent().parent().child('members').child(auth.uid).exists()"
+          }
+        },
+
+        "members": {
+          ".read": "auth != null && data.child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (data.exists() || (root.child('rides').child($rideId).child('meta/locked').val() !== true && !root.child('rides').child($rideId).child('meta/endedAt').exists()))",
+            ".validate": "newData.hasChildren(['name', 'color', 'status', 'joinedAt']) || !newData.exists()",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 24" },
+            "phone": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "status": { ".validate": "newData.val().matches(/^(riding|fuel|rest|food|mechanical|sos|arrived|left)$/)" },
+            "role": {
+              ".write": "auth != null && newData.parent().parent().child(auth.uid).exists()",
+              ".validate": "newData.val() === 'lead' || newData.val() === 'sweep'"
+            }
+          }
+        },
+
+        "locations": {
+          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || newData.parent().parent().child('members').child(auth.uid).exists())",
+            ".validate": "!newData.exists() || (newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('ts').isNumber())"
+          }
+        },
+
+        "events": {
+          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+          ".indexOn": ["ts"],
+          "$eventId": {
+            ".write": "auth != null && !data.exists() && newData.child('uid').val() === auth.uid && newData.parent().parent().child('members').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['type', 'uid', 'ts'])"
+          }
+        },
+
+        "regroup": {
+          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
+          ".write": "auth != null && data.parent().child('members').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}

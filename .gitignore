@@ -1,0 +1,50 @@
+# Monorepo-wide ignores. app/.gitignore adds the Expo-specific ones.
+
+# dependencies
+node_modules/
+
+# secrets — never commit
+.env
+.env*.local
+product_assets/developer_files/
+client_secret*.json
+google-services.json
+GoogleService-Info.plist
+*.pem
+*.p8
+*.p12
+*.jks
+*.keystore
+service-account*.json
+
+# Firebase CLI
+.firebase/
+firebase-debug.log
+database-debug.log
+
+# AI tooling — never commit (agent configs, memory DBs, instructions)
+.claude/
+.claude-flow/
+.swarm/
+.hive-mind/
+ruvector.db
+*.ruvector.db
+agentdb*.db
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.mcp.json
+.cursor/
+.cursorrules
+.windsurf/
+.roo/
+.aider*
+.github/copilot-instructions.md
+
+# logs
+*.log
+npm-debug.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
