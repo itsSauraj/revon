@@ -12,14 +12,16 @@ over to check a chat app or call around.
 - Full-screen Google Maps with place search (Places API) and long-press to drop a pin
 - Route preview with distance and time, with options to avoid highways and tolls
 - Two-wheeler routing where Google supports it, otherwise driving
-- One tap hands turn-by-turn navigation off to the Google Maps app
+- **In-app ride view**: the map follows you heading-up, the ridden part of the route greys out,
+  distance, time and arrival time update as you go, and it re-routes when you leave the route
 
 **Group rides**
 - Start a ride to a destination and invite riders with a 6-character code or a `revon://join/CODE` link
 - No host: anyone in the ride can invite others; any member can lock the ride to new joiners
-- Live marker for every rider with initials, color and status; greyed out after 60 s without signal
+- Live marker for every rider with name tag and color; greyed out (kept at the last position) after 60 s without signal
+- Status labels on the map (Fuel stop, Rest stop, Food stop, Mechanical, Needs help) together with a notification; tapping the notification jumps to that rider
 - Rider list ordered front to back, showing how far each rider is ahead of or behind you along the route
-- Tap a rider for speed, moving or stopped, road ETA, a Call button (if they chose to share their number) and directions to them
+- Tap a rider for speed, moving or stopped, road ETA, a Call button (if they chose to share their number) and an in-app route to them
 
 **Biker extras**
 - One-tap status: Fuel, Rest, Food, Mechanical
@@ -56,6 +58,7 @@ over to check a chat app or call around.
 | Places and routing | Google Places API (New), Routes API (REST) |
 | Location | `expo-location` + `expo-task-manager` background task |
 | Alerts | `expo-notifications`, `expo-speech` |
+| UI | Monochrome theme with one accent (`#C8F135`); icons from [react-icons](https://react-icons.github.io/react-icons/) (Lucide set), drawn with `react-native-svg` on mobile |
 | Backend | Firebase Realtime Database + Anonymous Auth (Firebase JS SDK) |
 
 ## Getting started
@@ -134,14 +137,16 @@ You need two devices, or one device and an emulator with mock locations.
   fully closed apps needs Cloud Functions + FCM (planned).
 - Invite links use the `revon://` scheme; https links that install-then-join need a hosted domain.
 - Calling uses the phone dialer; there is no in-app voice.
-- Turn-by-turn navigation is handed off to Google Maps rather than built in.
+- The in-app ride view has no spoken turn-by-turn prompts: Google's Maps Platform Terms
+  (§3.2.3(d)(iv)) don't allow building Google-Maps-like real-time navigation from the Routes data.
+  A static directions list is available, plus an optional hand-off to Google Maps for voice guidance.
 
 ## Roadmap
 
 - Push notifications via Cloud Functions + FCM (SOS reaches every rider, even with the app closed)
 - https invite links (Android App Links / iOS Universal Links)
 - Google Sign-In and ride history
-- In-app turn-by-turn (Google Navigation SDK) and group push-to-talk
+- Spoken in-app turn-by-turn via the Google Navigation SDK, and group push-to-talk
 - Store release: background location declarations, per-platform restricted API keys
 
 ## License

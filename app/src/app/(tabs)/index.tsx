@@ -1,23 +1,33 @@
 import * as Location from 'expo-location';
 import { Redirect, router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Keyboard,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+  LuLocateFixed,
+  LuMapPin,
+  LuNavigation,
+  LuRoute,
+  LuSearch,
+  LuUserPlus,
+  LuUsers,
+  LuX,
+} from 'react-icons/lu';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Fab } from '@/components/ride/fab';
+import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { NavBar } from '@/components/nav/nav-bar';
+import { StepsSheet } from '@/components/nav/steps-sheet';
+import { PlaceMarker } from '@/components/ride/place-marker';
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { CompassButton, isRotated } from '@/components/ui/compass-button';
+import { Icon } from '@/components/ui/icon';
+import { IconButton } from '@/components/ui/icon-button';
+import { Size, Type } from '@/constants/theme';
+import { useMapHeading } from '@/hooks/use-map-heading';
+import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
+import { showMessage } from '@/lib/dialog';
 import { decodePolyline, formatDistance, formatDuration } from '@/lib/geo';
 import {
   computeRoute,
@@ -31,7 +41,7 @@ import {
 import { getActiveRideId, startTracking } from '@/lib/location-task';
 import { createRide } from '@/lib/rides';
 import { useSession } from '@/lib/session';
-import type { LatLng, Place } from '@/lib/types';
+import type { Place } from '@/lib/types';
 
 const FALLBACK_REGION = { latitude: 20, longitude: 0, latitudeDelta: 60, longitudeDelta: 60 };
 
@@ -39,14 +49,17 @@ export default function MapHome() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { profile, uid, error: sessionError } = useSession();
-  const map = useRef<MapView>(null);
+  const map = useRef<MapRef>(null);
 
-  const [me, setMe] = useState<LatLng | null>(null);
+  const [me, setMe] = useState<Fix | null>(null);
+  const [showSteps, setShowSteps] = useState(false);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [searchToken, setSearchToken] = useState(newSessionToken);
   const [destination, setDestination] = useState<Place | null>(null);
   const [avoid, setAvoid] = useState({ highways: false, tolls: false });
+  const nav = useRouteFollow(map, me, avoid);
+  const compass = useMapHeading(map);
   // The route is stored with the request it answers, so a stale result is never shown.
   const routeKey = destination ? `${destination.latitude},${destination.longitude}|${avoid.highways}|${avoid.tolls}` : null;
   const [routeResult, setRouteResult] = useState<{ key: string; route: Route | null } | null>(null);
@@ -66,10 +79,10 @@ export default function MapHome() {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
-      const last = await Location.getLastKnownPositionAsync();
+      const last = await Location.getLastKnownPositionAsync().catch(() => null);
       const pos = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       const p = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-      setMe(p);
+      setMe({ ...p, heading: pos.coords.heading ?? -1, speed: pos.coords.speed ?? -1 });
       map.current?.animateToRegion({ ...p, latitudeDelta: 0.05, longitudeDelta: 0.05 }, 600);
     })().catch(() => {});
   }, []);
@@ -105,7 +118,7 @@ export default function MapHome() {
       .catch((e) => {
         if (cancelled) return;
         setRouteResult({ key: routeKey, route: null });
-        Alert.alert('Could not get a route', String(e));
+        showMessage('Could not get a route', String(e));
       });
     return () => {
       cancelled = true;
@@ -127,7 +140,7 @@ export default function MapHome() {
       setQuery(place.name);
       setDestination(place);
     } catch (e) {
-      Alert.alert('Could not load place', String(e));
+      showMessage('Could not load place', String(e));
     }
   };
 
@@ -152,7 +165,7 @@ export default function MapHome() {
       clear();
       router.push({ pathname: '/ride/[id]', params: { id: rideId, invite: '1' } });
     } catch (e) {
-      Alert.alert('Could not start the ride', String(e));
+      showMessage('Could not start the ride', String(e));
     } finally {
       setStarting(false);
     }
@@ -169,170 +182,257 @@ export default function MapHome() {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        mapPadding={{ top: insets.top + 70, right: 0, bottom: destination ? 300 : 90, left: 0 }}
+        mapPadding={{
+          top: insets.top + (nav.active ? 220 : 60),
+          right: 0,
+          bottom: nav.active ? 32 : destination ? 250 : 70,
+          left: 0,
+        }}
         onUserLocationChange={(e) => {
           const c = e.nativeEvent.coordinate;
-          if (c) setMe({ latitude: c.latitude, longitude: c.longitude });
+          if (c) setMe({ latitude: c.latitude, longitude: c.longitude, heading: c.heading ?? -1, speed: c.speed ?? -1 });
         }}
+        onPanDrag={nav.active ? nav.pause : undefined}
+        onRegionChangeComplete={compass.onRegionChangeComplete}
         onLongPress={(e) => {
+          if (nav.active) return;
           const c = e.nativeEvent.coordinate;
           const place = { ...c, name: 'Dropped pin' };
           setQuery(place.name);
           setDestination(place);
         }}>
-        {destination && <Marker coordinate={destination} title={destination.name} />}
-        {routeCoords.length > 1 && (
-          <Polyline coordinates={routeCoords} strokeColor={theme.primary} strokeWidth={6} />
+        {destination && <PlaceMarker coordinate={destination} icon={LuMapPin} title={destination.name} />}
+        {nav.active ? (
+          <>
+            {nav.travelled.length > 1 && (
+              <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} />
+            )}
+            {nav.ahead.length > 1 && <Polyline coordinates={nav.ahead} strokeColor={theme.route} strokeWidth={6} />}
+          </>
+        ) : (
+          routeCoords.length > 1 && <Polyline coordinates={routeCoords} strokeColor={theme.route} strokeWidth={5} />
         )}
       </MapView>
 
-      {/* Search pill */}
-      <View style={[styles.searchWrap, { top: insets.top + 10 }]}>
-        <View style={[styles.search, { backgroundColor: theme.surface }]}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            value={query}
-            onChangeText={(t) => {
-              setQuery(t);
-              if (destination) setDestination(null);
-            }}
-            placeholder="Where are you riding to?"
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.searchInput, { color: theme.text }]}
-            returnKeyType="search"
+      {nav.active && nav.target && (
+        <>
+          <NavBar
+            targetName={nav.target.name}
+            remainingM={nav.remainingM}
+            remainingS={nav.remainingS}
+            loading={nav.loading}
+            error={nav.error}
+            offRoute={nav.offRoute}
+            arrived={nav.arrived}
+            onSteps={() => setShowSteps(true)}
+            onExit={nav.stop}
           />
-          {query.length > 0 && (
-            <Pressable onPress={clear} hitSlop={10}>
-              <Text style={[styles.clear, { color: theme.textSecondary }]}>✕</Text>
-            </Pressable>
-          )}
-        </View>
-        {visibleSuggestions.length > 0 && (
-          <FlatList
-            data={visibleSuggestions}
-            keyExtractor={(s) => s.placeId}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.suggestions, { backgroundColor: theme.surface }]}
-            renderItem={({ item }) => (
-              <Pressable onPress={() => choose(item)} style={[styles.suggestion, { borderBottomColor: theme.border }]}>
-                <Text style={[styles.sMain, { color: theme.text }]} numberOfLines={1}>{item.main}</Text>
-                {!!item.secondary && (
-                  <Text style={[styles.sSecondary, { color: theme.textSecondary }]} numberOfLines={1}>
-                    {item.secondary}
-                  </Text>
-                )}
-              </Pressable>
+          <View style={[styles.mapButtons, { bottom: 24 }]}>
+            <CompassButton
+              heading={compass.heading}
+              active={nav.northUp}
+              accessibilityLabel={nav.northUp ? 'Switch to heading-up' : 'Switch to north-up'}
+              onPress={nav.toggleNorthUp}
+            />
+            {!nav.following && (
+              <IconButton
+                icon={LuLocateFixed}
+                variant="map"
+                floating
+                accessibilityLabel="Re-centre and follow me"
+                onPress={nav.recenter}
+              />
             )}
-          />
-        )}
-        {sessionError && <Text style={[styles.error, { backgroundColor: theme.danger }]}>{sessionError}</Text>}
-      </View>
-
-      {/* My location */}
-      <Fab
-        label="◎"
-        accessibilityLabel="Show my location"
-        style={{ position: 'absolute', right: 16, bottom: destination ? 320 : 110 }}
-        onPress={() => me && map.current?.animateToRegion({ ...me, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 500)}
-      />
-
-      {/* Bottom card */}
-      {destination ? (
-        <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.destName, { color: theme.text }]} numberOfLines={1}>{destination.name}</Text>
-          {!!destination.address && (
-            <Text style={[styles.destAddr, { color: theme.textSecondary }]} numberOfLines={1}>{destination.address}</Text>
-          )}
-          <Text style={[styles.routeLine, { color: theme.text }]}>
-            {routing
-              ? 'Finding a route…'
-              : route
-                ? `${formatDuration(route.durationS)} · ${formatDistance(route.distanceM)}`
-                : me
-                  ? 'No route found'
-                  : 'Waiting for your location…'}
-          </Text>
-          <View style={styles.avoidRow}>
-            <AvoidToggle label="Avoid highways" value={avoid.highways} onChange={(v) => setAvoid((a) => ({ ...a, highways: v }))} />
-            <AvoidToggle label="Avoid tolls" value={avoid.tolls} onChange={(v) => setAvoid((a) => ({ ...a, tolls: v }))} />
           </View>
-          <View style={styles.buttons}>
-            <Pressable
-              onPress={() => openGoogleMapsNav(destination)}
-              style={[styles.btn, { borderColor: theme.border }]}>
-              <Text style={[styles.btnText, { color: theme.text }]}>🧭 Navigate</Text>
-            </Pressable>
-            <Pressable
-              disabled={starting || !uid}
-              onPress={startGroupRide}
-              style={[styles.btn, { backgroundColor: theme.primary, borderColor: theme.primary, opacity: starting || !uid ? 0.6 : 1 }]}>
-              {starting ? (
-                <ActivityIndicator color={theme.onPrimary} />
-              ) : (
-                <Text style={[styles.btnText, { color: theme.onPrimary }]}>🏍 Start Group Ride</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.bottomPills}>
-          {activeRide && (
-            <Pressable
-              onPress={() => router.push({ pathname: '/ride/[id]', params: { id: activeRide } })}
-              style={[styles.pill, { backgroundColor: theme.success }]}>
-              <Text style={[styles.pillText, { color: '#fff' }]}>● Back to my ride</Text>
-            </Pressable>
+          {showSteps && (
+            <StepsSheet
+              steps={nav.route?.steps ?? []}
+              onClose={() => setShowSteps(false)}
+              onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+            />
           )}
-          <Pressable onPress={() => router.push('/join')} style={[styles.pill, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.pillText, { color: theme.text }]}>👥 Join a ride</Text>
-          </Pressable>
-        </View>
+        </>
       )}
-    </View>
-  );
-}
 
-function AvoidToggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.avoid}>
-      <Switch value={value} onValueChange={onChange} />
-      <Text style={[styles.avoidText, { color: theme.text }]}>{label}</Text>
+      {!nav.active && (
+        <>
+          {/* Search */}
+          <View style={[styles.searchWrap, { top: insets.top + 8 }]}>
+            <View style={[styles.search, { backgroundColor: theme.surface }]}>
+              <Icon icon={LuSearch} size={Size.iconSm} color={theme.textSecondary} />
+              <TextInput
+                value={query}
+                onChangeText={(t) => {
+                  setQuery(t);
+                  if (destination) setDestination(null);
+                }}
+                placeholder="Where are you riding to?"
+                placeholderTextColor={theme.textSecondary}
+                style={[styles.searchInput, { color: theme.text }]}
+                returnKeyType="search"
+              />
+              {query.length > 0 && (
+                <IconButton icon={LuX} variant="ghost" size={28} accessibilityLabel="Clear search" onPress={clear} />
+              )}
+            </View>
+            {visibleSuggestions.length > 0 && (
+              <FlatList
+                data={visibleSuggestions}
+                keyExtractor={(s) => s.placeId}
+                keyboardShouldPersistTaps="handled"
+                style={[styles.suggestions, { backgroundColor: theme.surface }]}
+                renderItem={({ item }) => (
+                  <Pressable onPress={() => choose(item)} style={[styles.suggestion, { borderBottomColor: theme.border }]}>
+                    <Icon icon={LuMapPin} size={Size.iconSm} color={theme.textSecondary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sMain, { color: theme.text }]} numberOfLines={1}>
+                        {item.main}
+                      </Text>
+                      {!!item.secondary && (
+                        <Text style={[styles.sSecondary, { color: theme.textSecondary }]} numberOfLines={1}>
+                          {item.secondary}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+                )}
+              />
+            )}
+            {sessionError && (
+              <Text style={[styles.error, { backgroundColor: theme.inverse, color: theme.onInverse }]}>{sessionError}</Text>
+            )}
+          </View>
+
+          <View style={[styles.mapButtons, { bottom: destination ? 262 : 80 }]}>
+            {isRotated(compass.heading) && <CompassButton heading={compass.heading} onPress={compass.resetNorth} />}
+            <IconButton
+              icon={LuLocateFixed}
+              variant="map"
+              floating
+              accessibilityLabel="Show my location"
+              onPress={() => me && map.current?.animateToRegion({ ...me, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 500)}
+            />
+          </View>
+
+          {destination ? (
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <Text style={[styles.destName, { color: theme.text }]} numberOfLines={1}>
+                {destination.name}
+              </Text>
+              {!!destination.address && (
+                <Text style={[styles.destAddr, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {destination.address}
+                </Text>
+              )}
+              <Text style={[styles.routeLine, { color: theme.text }]}>
+                {routing
+                  ? 'Finding a route…'
+                  : route
+                    ? `${formatDuration(route.durationS)} · ${formatDistance(route.distanceM)}`
+                    : me
+                      ? 'No route found'
+                      : 'Waiting for your location…'}
+              </Text>
+              <View style={styles.avoidRow}>
+                <Chip
+                  label="Avoid highways"
+                  selected={avoid.highways}
+                  onPress={() => setAvoid((a) => ({ ...a, highways: !a.highways }))}
+                />
+                <Chip label="Avoid tolls" selected={avoid.tolls} onPress={() => setAvoid((a) => ({ ...a, tolls: !a.tolls }))} />
+              </View>
+              <View style={styles.buttons}>
+                <Button label="Navigate" icon={LuNavigation} onPress={() => nav.start(destination)} style={styles.flex} />
+                <Button
+                  label="Start group ride"
+                  icon={LuUsers}
+                  variant="accent"
+                  loading={starting}
+                  disabled={!uid}
+                  onPress={startGroupRide}
+                  style={styles.flex}
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.bottomPills}>
+              {activeRide && (
+                <Button
+                  label="Back to my ride"
+                  icon={LuRoute}
+                  variant="accent"
+                  onPress={() => router.push({ pathname: '/ride/[id]', params: { id: activeRide } })}
+                  style={styles.shadow}
+                />
+              )}
+              <Button
+                label="Join a ride"
+                icon={LuUserPlus}
+                variant="map"
+                onPress={() => router.push('/join')}
+                style={styles.shadow}
+              />
+            </View>
+          )}
+        </>
+      )}
     </View>
   );
 }
 
 const shadow = {
   shadowColor: '#000',
-  shadowOpacity: 0.18,
-  shadowRadius: 8,
+  shadowOpacity: 0.14,
+  shadowRadius: 6,
   shadowOffset: { width: 0, height: 2 },
-  elevation: 6,
+  elevation: 4,
 };
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  flex: { flex: 1 },
+  shadow,
   searchWrap: { position: 'absolute', left: 12, right: 12 },
-  search: { height: 54, borderRadius: 27, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, ...shadow },
-  searchIcon: { fontSize: 18, marginRight: 10 },
-  searchInput: { flex: 1, fontSize: 17 },
-  clear: { fontSize: 18, paddingLeft: 10 },
-  suggestions: { marginTop: 8, borderRadius: 16, maxHeight: 320, ...shadow },
-  suggestion: { paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  sMain: { fontSize: 16, fontWeight: '600' },
-  sSecondary: { fontSize: 13, marginTop: 2 },
-  error: { marginTop: 8, color: '#fff', padding: 10, borderRadius: 10, overflow: 'hidden' },
-  card: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, paddingBottom: 28, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 6, ...shadow },
-  destName: { fontSize: 22, fontWeight: '800' },
-  destAddr: { fontSize: 14 },
-  routeLine: { fontSize: 17, fontWeight: '700', marginTop: 4 },
-  avoidRow: { flexDirection: 'row', gap: 16, marginTop: 4 },
-  avoid: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  avoidText: { fontSize: 14 },
-  buttons: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  btn: { flex: 1, height: 56, borderRadius: 28, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  btnText: { fontSize: 16, fontWeight: '800' },
-  bottomPills: { position: 'absolute', left: 16, right: 16, bottom: 24, gap: 10 },
-  pill: { height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', ...shadow },
-  pillText: { fontSize: 17, fontWeight: '800' },
+  search: {
+    height: Size.control,
+    borderRadius: Size.control / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 14,
+    paddingRight: 6,
+    ...shadow,
+  },
+  searchInput: { flex: 1, fontSize: Type.body, height: '100%' },
+  suggestions: { marginTop: 6, borderRadius: Size.radius, maxHeight: 300, ...shadow },
+  suggestion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sMain: { fontSize: Type.small + 1, fontWeight: '600' },
+  sSecondary: { fontSize: Type.tiny + 1, marginTop: 1 },
+  error: { marginTop: 6, padding: 8, borderRadius: Size.radius, overflow: 'hidden', fontSize: Type.small },
+  card: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 16,
+    paddingBottom: 20,
+    borderTopLeftRadius: Size.radiusLg,
+    borderTopRightRadius: Size.radiusLg,
+    gap: 4,
+    ...shadow,
+  },
+  destName: { fontSize: Type.title, fontWeight: '700' },
+  destAddr: { fontSize: Type.small - 1 },
+  routeLine: { fontSize: Type.small + 1, fontWeight: '600', marginTop: 4 },
+  avoidRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  buttons: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  mapButtons: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' },
+  bottomPills: { position: 'absolute', left: 14, right: 14, bottom: 16, gap: 8 },
 });

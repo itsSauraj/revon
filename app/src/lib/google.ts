@@ -9,6 +9,15 @@ export type Suggestion = { placeId: string; main: string; secondary: string };
 
 export type Route = { polyline: string; distanceM: number; durationS: number };
 
+export type RouteStep = { instruction: string; maneuver: string; distanceM: number };
+
+export type RouteWithSteps = Route & { steps: RouteStep[] };
+
+/** Google's LatLng message accepts only these two fields; callers often pass richer objects. */
+function latLng(p: LatLng) {
+  return { latitude: p.latitude, longitude: p.longitude };
+}
+
 async function googlePost<T>(url: string, fieldMask: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
@@ -49,7 +58,7 @@ export async function placesAutocomplete(
       input,
       sessionToken,
       ...(near
-        ? { locationBias: { circle: { center: near, radius: 50000 } } }
+        ? { locationBias: { circle: { center: latLng(near), radius: 50000 } } }
         : {}),
     },
   );
@@ -94,19 +103,43 @@ export async function placeDetails(placeId: string, sessionToken: string): Promi
 export async function computeRoute(
   origin: LatLng,
   destination: LatLng,
+  avoid?: { highways: boolean; tolls: boolean },
+): Promise<Route | null>;
+export async function computeRoute(
+  origin: LatLng,
+  destination: LatLng,
+  avoid: { highways: boolean; tolls: boolean } | undefined,
+  withSteps: true,
+): Promise<RouteWithSteps | null>;
+export async function computeRoute(
+  origin: LatLng,
+  destination: LatLng,
   avoid: { highways: boolean; tolls: boolean } = { highways: false, tolls: false },
-): Promise<Route | null> {
+  withSteps = false,
+): Promise<Route | RouteWithSteps | null> {
   type Res = {
-    routes?: { distanceMeters?: number; duration?: string; polyline?: { encodedPolyline?: string } }[];
+    routes?: {
+      distanceMeters?: number;
+      duration?: string;
+      polyline?: { encodedPolyline?: string };
+      legs?: {
+        steps?: {
+          distanceMeters?: number;
+          navigationInstruction?: { maneuver?: string; instructions?: string };
+        }[];
+      }[];
+    }[];
   };
   const body = (travelMode: 'TWO_WHEELER' | 'DRIVE') => ({
-    origin: { location: { latLng: origin } },
-    destination: { location: { latLng: destination } },
+    origin: { location: { latLng: latLng(origin) } },
+    destination: { location: { latLng: latLng(destination) } },
     travelMode,
     routingPreference: 'TRAFFIC_AWARE',
     routeModifiers: { avoidHighways: avoid.highways, avoidTolls: avoid.tolls },
   });
-  const mask = 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline';
+  const mask =
+    'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline' +
+    (withSteps ? ',routes.legs.steps.distanceMeters,routes.legs.steps.navigationInstruction' : '');
   const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
   let data: Res | null = null;
@@ -119,15 +152,26 @@ export async function computeRoute(
 
   const r = data.routes?.[0];
   if (!r?.polyline?.encodedPolyline) return null;
-  return {
+  const route: Route = {
     polyline: r.polyline.encodedPolyline,
     distanceM: r.distanceMeters ?? 0,
     durationS: parseInt(r.duration ?? '0', 10),
   };
+  if (!withSteps) return route;
+  const steps = (r.legs ?? []).flatMap((leg) =>
+    (leg.steps ?? [])
+      .filter((st) => st.navigationInstruction?.instructions)
+      .map((st) => ({
+        instruction: st.navigationInstruction!.instructions!,
+        maneuver: st.navigationInstruction!.maneuver ?? '',
+        distanceM: st.distanceMeters ?? 0,
+      })),
+  );
+  return { ...route, steps };
 }
 
 /**
- * Hands turn-by-turn navigation off to the Google Maps app (or the browser if it isn't installed).
+ * Optional: hands spoken turn-by-turn off to the Google Maps app (or the browser if it isn't installed).
  * On Android, mode "l" asks for two-wheeler directions where supported.
  */
 export async function openGoogleMapsNav(to: LatLng) {
@@ -135,7 +179,9 @@ export async function openGoogleMapsNav(to: LatLng) {
   const candidates =
     Platform.OS === 'android'
       ? [`google.navigation:q=${dest}&mode=l`, `google.navigation:q=${dest}`]
-      : [`comgooglemaps://?daddr=${dest}&directionsmode=driving`];
+      : Platform.OS === 'ios'
+        ? [`comgooglemaps://?daddr=${dest}&directionsmode=driving`]
+        : [];
   for (const url of candidates) {
     try {
       await Linking.openURL(url);

@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
+import { Size, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Profile } from '@/lib/types';
 
@@ -43,14 +45,25 @@ export function ProfileForm({ initial, submitLabel, onSubmit }: Props) {
         <Text style={[styles.switchText, { color: theme.text }]}>
           Let riders in my group call me
         </Text>
-        <Switch value={sharePhone && phone.trim().length > 0} onValueChange={setSharePhone} disabled={!phone.trim()} />
+        <Switch
+          value={sharePhone && phone.trim().length > 0}
+          onValueChange={setSharePhone}
+          disabled={!phone.trim()}
+          trackColor={{ true: theme.inverse, false: theme.border }}
+          thumbColor={theme.surface}
+          ios_backgroundColor={theme.border}
+        />
       </View>
       <Text style={[styles.hint, { color: theme.textSecondary }]}>
         Your number is only shared with the people in a ride you join, and only while you are in it.
       </Text>
 
-      <Pressable
-        disabled={!valid || saving}
+      <Button
+        label={submitLabel}
+        variant="accent"
+        disabled={!valid}
+        loading={saving}
+        style={styles.button}
         onPress={async () => {
           setSaving(true);
           try {
@@ -59,20 +72,17 @@ export function ProfileForm({ initial, submitLabel, onSubmit }: Props) {
             setSaving(false);
           }
         }}
-        style={[styles.button, { backgroundColor: theme.primary, opacity: valid && !saving ? 1 : 0.5 }]}>
-        <Text style={[styles.buttonText, { color: theme.onPrimary }]}>{submitLabel}</Text>
-      </Pressable>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 10 },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 8 },
-  input: { height: 52, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 18 },
+  form: { gap: 8 },
+  label: { fontSize: Type.small - 1, fontWeight: '600', marginTop: 6 },
+  input: { height: Size.control, borderRadius: Size.radius, borderWidth: 1, paddingHorizontal: 12, fontSize: Type.body },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  switchText: { fontSize: 16, flex: 1 },
-  hint: { fontSize: 13 },
-  button: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
-  buttonText: { fontSize: 18, fontWeight: '800' },
+  switchText: { fontSize: Type.small + 1, flex: 1 },
+  hint: { fontSize: Type.tiny + 1 },
+  button: { marginTop: 12 },
 });

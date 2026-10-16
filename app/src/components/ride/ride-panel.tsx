@@ -1,20 +1,18 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LuChevronDown, LuChevronUp, LuLock, LuLockOpen, LuLogOut, LuMapPin, LuUserPlus } from 'react-icons/lu';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { Icon } from '@/components/ui/icon';
+import { Size, Type } from '@/constants/theme';
 import { GAP_ALERT_M, type Rider } from '@/hooks/use-ride';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDistance } from '@/lib/geo';
 import type { RideMeta, RiderRole, RiderStatus } from '@/lib/types';
 
-import { initials, STATUS_ICON } from './member-marker';
-
-const CHIPS: { status: RiderStatus; label: string }[] = [
-  { status: 'fuel', label: '⛽ Fuel' },
-  { status: 'rest', label: '☕ Rest' },
-  { status: 'food', label: '🍔 Food' },
-  { status: 'mechanical', label: '🔧 Mechanical' },
-];
+import { initials, STATUS_META, STOP_STATUSES } from './status';
 
 type Props = {
   meta: RideMeta;
@@ -33,6 +31,21 @@ type Props = {
   onLeave: () => void;
 };
 
+function riderLine(r: Rider) {
+  const where = !r.loc
+    ? 'Waiting for location'
+    : r.stale && r.status !== 'arrived'
+      ? 'No signal'
+      : r.relativeM != null
+        ? `${formatDistance(r.relativeM)} ${r.relativeM >= 0 ? 'ahead' : 'behind'}`
+        : r.status === 'arrived'
+          ? null
+          : r.moving
+            ? 'Moving'
+            : 'Stopped';
+  return [STATUS_META[r.status]?.tag, where, r.loc?.offRoute ? 'off route' : null].filter(Boolean).join(' · ');
+}
+
 /** Bottom panel: one-tap status, the convoy list (front first), and ride actions. */
 export function RidePanel(p: Props) {
   const theme = useTheme();
@@ -41,89 +54,84 @@ export function RidePanel(p: Props) {
   const active = p.riders.length;
 
   return (
-    <View style={[styles.panel, { backgroundColor: theme.surface, paddingBottom: insets.bottom + 12 }]}>
-      <Pressable onPress={() => setExpanded((e) => !e)} style={styles.handleRow} accessibilityRole="button">
+    <View style={[styles.panel, { backgroundColor: theme.surface, paddingBottom: insets.bottom + 10 }]}>
+      <Pressable
+        onPress={() => setExpanded((e) => !e)}
+        style={styles.handleRow}
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? 'Collapse ride panel' : 'Expand ride panel'}>
         <View style={[styles.handle, { backgroundColor: theme.border }]} />
         <View style={styles.summary}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
               {p.meta.destination.name}
             </Text>
-            <Text style={[styles.sub, { color: theme.textSecondary }]}>
+            <Text style={[styles.sub, { color: theme.textSecondary }]} numberOfLines={1}>
               {active} rider{active === 1 ? '' : 's'} · code {p.meta.code}
-              {p.meta.locked ? ' · 🔒 locked' : ''}
-              {p.gapM != null ? ` · group spread ${formatDistance(p.gapM)}` : ''}
+              {p.meta.locked ? ' · locked' : ''}
+              {p.gapM != null ? ` · spread ${formatDistance(p.gapM)}` : ''}
             </Text>
           </View>
-          <Text style={[styles.chevron, { color: theme.textSecondary }]}>{expanded ? '▾' : '▴'}</Text>
+          <Icon icon={expanded ? LuChevronDown : LuChevronUp} size={Size.icon} color={theme.textSecondary} />
         </View>
       </Pressable>
 
-      {p.trackingNote && <Text style={[styles.note, { color: theme.warn }]}>{p.trackingNote}</Text>}
+      {p.trackingNote && <Text style={[styles.note, { color: theme.textSecondary }]}>{p.trackingNote}</Text>}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {CHIPS.map((c) => {
-          const on = p.myStatus === c.status;
-          return (
-            <Pressable
-              key={c.status}
-              onPress={() => p.onStatus(on ? 'riding' : c.status)}
-              style={[styles.chip, { borderColor: on ? theme.primary : theme.border, backgroundColor: on ? theme.primary : 'transparent' }]}>
-              <Text style={[styles.chipText, { color: on ? theme.onPrimary : theme.text }]}>{c.label}</Text>
-            </Pressable>
-          );
+        {STOP_STATUSES.map((s) => {
+          const m = STATUS_META[s]!;
+          const on = p.myStatus === s;
+          return <Chip key={s} label={m.label} icon={m.icon} selected={on} onPress={() => p.onStatus(on ? 'riding' : s)} />;
         })}
       </ScrollView>
 
       {expanded && (
         <>
           <ScrollView style={styles.list}>
-            {p.riders.map((r) => (
-              <Pressable key={r.uid} onPress={() => p.onRiderPress(r.uid)} style={styles.row}>
-                <View style={[styles.avatar, { backgroundColor: r.status === 'sos' ? theme.danger : r.stale ? '#8B8D98' : r.color }]}>
-                  <Text style={styles.avatarText}>{initials(r.name)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowName, { color: theme.text }]}>
-                    {r.name}
-                    {r.uid === p.myUid ? ' (you)' : ''}
-                    {r.role ? ` · ${r.role === 'lead' ? 'Lead' : 'Sweep'}` : ''}
-                  </Text>
-                  <Text style={[styles.sub, { color: r.status === 'sos' ? theme.danger : theme.textSecondary }]}>
-                    {STATUS_ICON[r.status] ? `${STATUS_ICON[r.status]} ` : ''}
-                    {r.status === 'sos'
-                      ? 'NEEDS HELP'
-                      : r.stale
-                        ? 'No signal'
-                        : r.relativeM != null
-                          ? `${formatDistance(r.relativeM)} ${r.relativeM >= 0 ? 'ahead' : 'behind'}`
-                          : r.status === 'arrived'
-                            ? 'Arrived'
-                            : r.moving
-                              ? 'Moving'
-                              : 'Stopped'}
-                    {r.loc?.offRoute ? ' · off route' : ''}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <View style={styles.roleRow}>
-            <Text style={[styles.sub, { color: theme.textSecondary }]}>My role:</Text>
-            {(['lead', 'sweep', null] as RiderRole[]).map((role) => {
-              const on = p.myRole === role;
+            {p.riders.map((r) => {
+              const isMe = r.uid === p.myUid;
+              const sos = r.status === 'sos';
+              const bg = sos ? theme.danger : r.stale ? theme.stale : isMe ? theme.me : theme.rider;
               return (
-                <Pressable
-                  key={role ?? 'none'}
-                  onPress={() => p.onRole(role)}
-                  style={[styles.chip, { borderColor: on ? theme.primary : theme.border, backgroundColor: on ? theme.primary : 'transparent' }]}>
-                  <Text style={[styles.chipText, { color: on ? theme.onPrimary : theme.text }]}>
-                    {role === 'lead' ? 'Lead' : role === 'sweep' ? 'Sweep' : 'Rider'}
-                  </Text>
+                <Pressable key={r.uid} onPress={() => p.onRiderPress(r.uid)} style={styles.row}>
+                  <View style={[styles.avatar, { backgroundColor: bg }]}>
+                    <Text
+                      style={[
+                        styles.avatarText,
+                        { color: sos ? theme.onDanger : r.stale ? '#FFFFFF' : isMe ? theme.meInk : theme.riderInk },
+                      ]}>
+                      {initials(r.name)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rowName, { color: theme.text }]} numberOfLines={1}>
+                      {r.name}
+                      {isMe ? ' (you)' : ''}
+                      {r.role ? ` · ${r.role === 'lead' ? 'Lead' : 'Sweep'}` : ''}
+                    </Text>
+                    <Text style={[styles.sub, { color: sos ? theme.danger : theme.textSecondary }]} numberOfLines={1}>
+                      {riderLine(r)}
+                    </Text>
+                  </View>
+                  {STATUS_META[r.status] && (
+                    <Icon icon={STATUS_META[r.status]!.icon} size={Size.iconSm} color={sos ? theme.danger : theme.textSecondary} />
+                  )}
                 </Pressable>
               );
             })}
+          </ScrollView>
+
+          <View style={styles.roleRow}>
+            <Text style={[styles.sub, { color: theme.textSecondary }]}>My role</Text>
+            {(['lead', 'sweep', null] as RiderRole[]).map((role) => (
+              <Chip
+                key={role ?? 'none'}
+                label={role === 'lead' ? 'Lead' : role === 'sweep' ? 'Sweep' : 'Rider'}
+                selected={p.myRole === role}
+                onPress={() => p.onRole(role)}
+              />
+            ))}
           </View>
           {p.gapM == null && (
             <Text style={[styles.hint, { color: theme.textSecondary }]}>
@@ -132,62 +140,51 @@ export function RidePanel(p: Props) {
           )}
 
           <View style={styles.actions}>
-            <PanelButton label="📍 Regroup here" onPress={p.onRegroupHere} />
-            <PanelButton label={p.meta.locked ? '🔓 Unlock' : '🔒 Lock'} onPress={p.onToggleLock} />
+            <Button label="Regroup here" icon={LuMapPin} size="sm" onPress={p.onRegroupHere} style={styles.flex} />
+            <Button
+              label={p.meta.locked ? 'Unlock' : 'Lock'}
+              icon={p.meta.locked ? LuLockOpen : LuLock}
+              size="sm"
+              onPress={p.onToggleLock}
+              style={styles.flex}
+            />
           </View>
         </>
       )}
 
       <View style={styles.actions}>
-        <PanelButton label="➕ Invite" onPress={p.onInvite} primary />
-        <PanelButton label="Leave ride" onPress={p.onLeave} danger />
+        <Button label="Invite" icon={LuUserPlus} variant="inverse" size="sm" onPress={p.onInvite} style={styles.flex} />
+        <Button label="Leave" icon={LuLogOut} size="sm" onPress={p.onLeave} style={styles.flex} />
       </View>
     </View>
   );
 }
 
-function PanelButton({ label, onPress, primary, danger }: { label: string; onPress: () => void; primary?: boolean; danger?: boolean }) {
-  const theme = useTheme();
-  const bg = primary ? theme.primary : 'transparent';
-  const fg = primary ? theme.onPrimary : danger ? theme.danger : theme.text;
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.btn, { backgroundColor: bg, borderColor: primary ? bg : theme.border, opacity: pressed ? 0.8 : 1 }]}>
-      <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   panel: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
+    borderTopLeftRadius: Size.radiusLg,
+    borderTopRightRadius: Size.radiusLg,
+    paddingHorizontal: 14,
     gap: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 12,
+    elevation: 10,
   },
-  handleRow: { paddingTop: 8 },
-  handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, marginBottom: 8 },
-  summary: { flexDirection: 'row', alignItems: 'center' },
-  title: { fontSize: 19, fontWeight: '800' },
-  sub: { fontSize: 14, marginTop: 2 },
-  chevron: { fontSize: 18, marginLeft: 8 },
-  note: { fontSize: 13, fontWeight: '600' },
-  chips: { gap: 8 },
-  chip: { paddingHorizontal: 16, height: 44, borderRadius: 22, borderWidth: 1.5, justifyContent: 'center' },
-  chipText: { fontSize: 16, fontWeight: '700' },
-  list: { maxHeight: 260 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: '800' },
-  rowName: { fontSize: 16, fontWeight: '700' },
-  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  hint: { fontSize: 12 },
-  actions: { flexDirection: 'row', gap: 10 },
-  btn: { flex: 1, height: 52, borderRadius: 26, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  btnText: { fontSize: 16, fontWeight: '800' },
+  handleRow: { paddingTop: 6 },
+  handle: { alignSelf: 'center', width: 32, height: 4, borderRadius: 2, marginBottom: 8 },
+  summary: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: Type.body, fontWeight: '700' },
+  sub: { fontSize: Type.small - 1, marginTop: 1 },
+  note: { fontSize: Type.tiny + 1 },
+  chips: { gap: 6 },
+  list: { maxHeight: 220 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontWeight: '800', fontSize: Type.tiny },
+  rowName: { fontSize: Type.small + 1, fontWeight: '600' },
+  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  hint: { fontSize: Type.tiny },
+  actions: { flexDirection: 'row', gap: 8 },
+  flex: { flex: 1 },
 });

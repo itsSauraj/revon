@@ -1,8 +1,11 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { get, ref } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { LuMap } from 'react-icons/lu';
 
+import { Button } from '@/components/ui/button';
+import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { db } from '@/lib/firebase';
 import { startTracking } from '@/lib/location-task';
@@ -49,13 +52,11 @@ export default function JoinRide() {
         <>
           <Text style={[styles.title, { color: theme.text }]}>Couldn&apos;t join {code}</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>{error}</Text>
-          <Pressable onPress={() => router.replace('/')} style={[styles.button, { backgroundColor: theme.primary }]}>
-            <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Back to map</Text>
-          </Pressable>
+          <Button label="Back to map" icon={LuMap} variant="inverse" onPress={() => router.replace('/')} style={styles.button} />
         </>
       ) : (
         <>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator color={theme.text} />
           <Text style={[styles.body, { color: theme.textSecondary }]}>Joining ride {code}…</Text>
         </>
       )}
@@ -64,9 +65,8 @@ export default function JoinRide() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
-  title: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  body: { fontSize: 16, textAlign: 'center' },
-  button: { height: 56, borderRadius: 28, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  buttonText: { fontSize: 17, fontWeight: '800' },
+  screen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 },
+  title: { fontSize: Type.title, fontWeight: '700', textAlign: 'center' },
+  body: { fontSize: Type.small + 1, textAlign: 'center' },
+  button: { marginTop: 6 },
 });

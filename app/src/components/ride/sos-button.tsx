@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LuSiren } from 'react-icons/lu';
+
+import { Icon } from '@/components/ui/icon';
+import { Size, Type } from '@/constants/theme';
 
 const HOLD_MS = 2000;
 
@@ -53,28 +57,31 @@ export function SosButton({ active, onTrigger, onClear }: Props) {
       }}
       style={[styles.btn, active && styles.active]}>
       <View style={[styles.fill, { width: `${progress * 100}%` }]} />
-      <Text style={styles.text}>{active ? 'SOS SENT · TAP IF OK' : progress > 0 ? 'HOLD…' : 'SOS'}</Text>
+      <Icon icon={LuSiren} size={Size.iconSm} color="#FFFFFF" />
+      <Text style={styles.text}>{active ? 'SOS sent · tap if OK' : progress > 0 ? 'Hold…' : 'SOS'}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   btn: {
-    minWidth: 76,
-    height: 56,
-    paddingHorizontal: 16,
-    borderRadius: 28,
+    flexDirection: 'row',
+    gap: 6,
+    minWidth: 72,
+    height: Size.fab,
+    paddingHorizontal: 14,
+    borderRadius: Size.fab / 2,
     backgroundColor: '#E5484D',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    elevation: 6,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
   active: { backgroundColor: '#B3262B' },
   fill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#8F1D21' },
-  text: { color: '#fff', fontWeight: '900', fontSize: 18, letterSpacing: 1 },
+  text: { color: '#FFFFFF', fontWeight: '800', fontSize: Type.small + 1, letterSpacing: 0.5 },
 });

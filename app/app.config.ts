@@ -10,8 +10,8 @@ const webServicesKey = process.env.EXPO_PUBLIC_GOOGLE_API_KEY || mapsKey;
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'revon',
-  // Must match the linked EAS project (extra.eas.projectId).
-  slug: 'Revon',
+  // Must match the EAS project's slug on expo.dev (linked via extra.eas.projectId).
+  slug: 'revon',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/revon.icon/ios/AppIcon~ios-marketing.png',
@@ -37,7 +37,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'com.velobits.Revon',
   },
   web: {
-    output: 'static',
+    // Single-page app: the app relies on browser-only APIs (geolocation, storage), so no static rendering.
+    output: 'single',
     favicon: './assets/revon.icon/web/icon-192.png',
   },
   plugins: [
@@ -68,7 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         isAndroidForegroundServiceEnabled: true,
       },
     ],
-    ['expo-notifications', { color: '#208AEF' }],
+    ['expo-notifications', { color: '#0A0A0A' }],
   ],
   experiments: {
     typedRoutes: true,
@@ -77,7 +78,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     router: {},
     eas: {
-      projectId: '71b4afba-7a32-4b45-a260-10f9f6545fa0',
+      // TODO: paste the id printed by `npx eas-cli@latest init` (the "revon" EAS project).
+      projectId: '',
     },
     googleApiKey: webServicesKey,
   },

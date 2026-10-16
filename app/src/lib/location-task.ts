@@ -130,11 +130,14 @@ export async function handleLocation(loc: Location.LocationObject) {
   }
 }
 
-TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, async ({ data, error }) => {
-  if (error || !data?.locations?.length) return;
-  // Only the most recent fix matters for a live position.
-  await handleLocation(data.locations[data.locations.length - 1]);
-});
+// Browsers have no background tasks; web uses the watchPositionAsync fallback in startTracking.
+if (Platform.OS !== 'web') {
+  TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, async ({ data, error }) => {
+    if (error || !data?.locations?.length) return;
+    // Only the most recent fix matters for a live position.
+    await handleLocation(data.locations[data.locations.length - 1]);
+  });
+}
 
 export type TrackingMode = 'background' | 'foreground-only' | 'denied';
 
@@ -162,7 +165,7 @@ export async function startTracking(ctx: TrackingContext): Promise<TrackingMode>
       foregroundService: {
         notificationTitle: 'Group ride in progress',
         notificationBody: 'Revon is sharing your location with your ride group.',
-        notificationColor: '#208AEF',
+        notificationColor: '#0A0A0A',
         killServiceOnDestroy: false,
       },
     });

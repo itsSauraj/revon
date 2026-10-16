@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
 import { ProfileForm } from '@/components/profile-form';
+import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { saveProfile, useSession } from '@/lib/session';
@@ -23,7 +24,7 @@ export default function SettingsScreen() {
       <Text style={[styles.section, { color: theme.text }]}>Rider profile</Text>
       <ProfileForm
         initial={profile}
-        submitLabel={saved ? 'Saved ✓' : 'Save'}
+        submitLabel={saved ? 'Saved' : 'Save'}
         onSubmit={async (p) => {
           await saveProfile(p);
           setSaved(true);
@@ -45,7 +46,7 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, gap: 8, paddingBottom: 120 },
-  section: { fontSize: 20, fontWeight: '800', marginTop: 16 },
-  hint: { fontSize: 13, lineHeight: 19 },
+  content: { padding: 16, gap: 6, paddingBottom: 80 },
+  section: { fontSize: Type.title, fontWeight: '700', marginTop: 12 },
+  hint: { fontSize: Type.tiny + 1, lineHeight: 17 },
 });

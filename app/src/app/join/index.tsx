@@ -1,6 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { LuUserPlus } from 'react-icons/lu';
+
+import { Button } from '@/components/ui/button';
+import { Size, Type } from '@/constants/theme';
 
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCode } from '@/lib/rides';
@@ -26,28 +30,27 @@ export default function JoinWithCode() {
         style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }]}
         onSubmitEditing={() => valid && router.replace({ pathname: '/join/[code]', params: { code } })}
       />
-      <Pressable
+      <Button
+        label="Join ride"
+        icon={LuUserPlus}
+        variant="accent"
         disabled={!valid}
         onPress={() => router.replace({ pathname: '/join/[code]', params: { code } })}
-        style={[styles.button, { backgroundColor: theme.primary, opacity: valid ? 1 : 0.5 }]}>
-        <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Join ride</Text>
-      </Pressable>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 24, gap: 16 },
-  label: { fontSize: 16 },
+  screen: { flex: 1, padding: 20, gap: 12 },
+  label: { fontSize: Type.small + 1 },
   input: {
-    height: 72,
-    borderRadius: 16,
+    height: 56,
+    borderRadius: Size.radius,
     borderWidth: 1,
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: 8,
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: 6,
     textAlign: 'center',
   },
-  button: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontSize: 18, fontWeight: '800' },
 });

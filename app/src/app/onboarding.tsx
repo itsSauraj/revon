@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileForm } from '@/components/profile-form';
+import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { saveProfile, useSession } from '@/lib/session';
 
@@ -37,7 +38,7 @@ export default function Onboarding() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 24, gap: 8 },
-  title: { fontSize: 40, fontWeight: '900', marginTop: 24 },
-  subtitle: { fontSize: 16, lineHeight: 22, marginBottom: 12 },
+  content: { padding: 20, gap: 6 },
+  title: { fontSize: 28, fontWeight: '800', marginTop: 20, letterSpacing: -0.5 },
+  subtitle: { fontSize: Type.body - 1, lineHeight: 20, marginBottom: 10 },
 });

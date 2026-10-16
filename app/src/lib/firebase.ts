@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   type Auth,
@@ -25,6 +26,8 @@ export const DATABASE_URL = (firebaseConfig.databaseURL ?? '').replace(/\/$/, ''
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 function createAuth(): Auth {
+  // On web the browser build of Firebase Auth persists to IndexedDB by itself.
+  if (Platform.OS === 'web') return getAuth(app);
   try {
     return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
   } catch {

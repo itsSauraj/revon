@@ -46,6 +46,8 @@ export function decodePolyline(encoded: string): LatLng[] {
 export type Projection = {
   alongM: number; // distance from route start to the closest point on the route
   crossM: number; // distance from the point to the route
+  segment: number; // index of the route segment the closest point lies on
+  t: number; // position along that segment, 0..1
 };
 
 /**
@@ -70,10 +72,27 @@ export function projectOntoRoute(p: LatLng, route: LatLng[]): Projection | null 
     const dy = py - t * by;
     const crossM = Math.sqrt(dx * dx + dy * dy);
     const segLen = Math.sqrt(segLen2);
-    if (!best || crossM < best.crossM) best = { alongM: walked + t * segLen, crossM };
+    if (!best || crossM < best.crossM) best = { alongM: walked + t * segLen, crossM, segment: i, t };
     walked += segLen;
   }
   return best;
+}
+
+/** Splits a route at the point closest to `p` into the part already ridden and the part ahead. */
+export function splitRoute(p: LatLng, route: LatLng[]) {
+  const proj = projectOntoRoute(p, route);
+  if (!proj) return null;
+  const a = route[proj.segment];
+  const b = route[proj.segment + 1];
+  const at = {
+    latitude: a.latitude + (b.latitude - a.latitude) * proj.t,
+    longitude: a.longitude + (b.longitude - a.longitude) * proj.t,
+  };
+  return {
+    ...proj,
+    travelled: [...route.slice(0, proj.segment + 1), at],
+    remaining: [at, ...route.slice(proj.segment + 1)],
+  };
 }
 
 export function routeLength(route: LatLng[]): number {
