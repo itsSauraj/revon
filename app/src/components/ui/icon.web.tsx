@@ -13,7 +13,9 @@ export function Icon({ icon: IconCmp, size = Size.icon, color }: IconProps) {
       size={size}
       color={color ?? theme.text}
       aria-hidden
-      style={{ display: 'block', flexShrink: 0, pointerEvents: 'none' }}
+      // position: relative so the icon paints above an absolutely-positioned glass layer behind it
+      // (react-native-web views are positioned by default; a bare <svg> isn't).
+      style={{ display: 'block', flexShrink: 0, pointerEvents: 'none', position: 'relative' }}
     />
   );
 }

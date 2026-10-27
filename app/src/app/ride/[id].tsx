@@ -5,17 +5,23 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import {
   LuChevronLeft,
   LuFlag,
+  LuLayers,
   LuLocateFixed,
+  LuMinus,
   LuLock,
   LuNavigation,
+  LuPlus,
   LuScan,
   LuShare2,
   LuUsers,
 } from 'react-icons/lu';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LayersSheet } from '@/components/map/layers-sheet';
 import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
+import { RecenterButton } from '@/components/nav/recenter-button';
 import { StepsSheet } from '@/components/nav/steps-sheet';
 import { AlertBanners } from '@/components/ride/alert-banner';
 import { MemberCard } from '@/components/ride/member-card';
@@ -25,6 +31,7 @@ import { RidePanel } from '@/components/ride/ride-panel';
 import { SosButton } from '@/components/ride/sos-button';
 import { Button } from '@/components/ui/button';
 import { CompassButton, isRotated } from '@/components/ui/compass-button';
+import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { Size, Type } from '@/constants/theme';
@@ -33,6 +40,7 @@ import { useRide } from '@/hooks/use-ride';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
 import { clearBanners, setupNotifications } from '@/lib/alerts';
+import { centerOn } from '@/lib/camera';
 import { confirmAction, shareText } from '@/lib/dialog';
 import { openGoogleMapsNav } from '@/lib/google';
 import { getActiveRideId, isTracking, startTracking, stopTracking, type TrackingMode } from '@/lib/location-task';
@@ -59,6 +67,8 @@ export default function RideScreen() {
   const [myPos, setMyPos] = useState<Fix | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
+  const [navH, setNavH] = useState(110);
   const nav = useRouteFollow(map, myPos, ride.meta?.avoid);
   const compass = useMapHeading(map);
   const [panelH, setPanelH] = useState(220);
@@ -169,6 +179,8 @@ export default function RideScreen() {
   }
 
   const meta = ride.meta;
+  // Banners and the button column start below the top pills, or below the next-turn card.
+  const overlayTop = insets.top + (nav.active ? 8 + navH + 10 : 54);
   const me = ride.me!;
   const sosActive = me.status === 'sos';
 
@@ -223,19 +235,14 @@ export default function RideScreen() {
         onPanDrag={nav.active ? nav.pause : undefined}
         onRegionChangeComplete={compass.onRegionChangeComplete}
         onLongPress={(e) => regroupAt(e.nativeEvent.coordinate, 'Regroup point')}>
-        {routeCoords.length > 1 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeColor={nav.active ? theme.groupRoute : theme.route}
-            strokeWidth={nav.active ? 3 : 5}
-          />
-        )}
+        {/* Group route: accent normally; a thin grey reference line while riding your own route. */}
+        {nav.active
+          ? routeCoords.length > 1 && <Polyline coordinates={routeCoords} strokeColor={theme.groupRoute} strokeWidth={3} />
+          : <RouteLine coordinates={routeCoords} />}
         {nav.active && nav.travelled.length > 1 && (
-          <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} />
+          <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} zIndex={1} />
         )}
-        {nav.active && nav.ahead.length > 1 && (
-          <Polyline coordinates={nav.ahead} strokeColor={theme.route} strokeWidth={6} />
-        )}
+        {nav.active && <RouteLine coordinates={nav.ahead} width={6} />}
         {nav.target && nav.target !== meta.destination && (
           <PlaceMarker coordinate={nav.target} icon={LuNavigation} title={nav.target.name} />
         )}
@@ -257,6 +264,7 @@ export default function RideScreen() {
       {nav.active && nav.target ? (
         <NavBar
           targetName={nav.target.name}
+          nextTurn={nav.nextTurn}
           remainingM={nav.remainingM}
           remainingS={nav.remainingS}
           loading={nav.loading}
@@ -265,13 +273,15 @@ export default function RideScreen() {
           arrived={nav.arrived}
           onSteps={() => setShowSteps(true)}
           onExit={nav.stop}
+          onHeight={setNavH}
         />
       ) : (
         <View style={[styles.topBar, { top: insets.top + 8 }]}>
           <Pressable
             accessibilityRole="button"
             onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            style={[styles.topPill, { backgroundColor: theme.surface }]}>
+            style={styles.topPill}>
+            <Glass style={[StyleSheet.absoluteFill, styles.pillGlass]} />
             <Icon icon={LuChevronLeft} size={Size.iconSm} color={theme.text} />
             <Text style={[styles.topText, { color: theme.text }]}>Map</Text>
           </Pressable>
@@ -279,7 +289,8 @@ export default function RideScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Share ride code ${meta.code}`}
             onPress={share}
-            style={[styles.topPill, { backgroundColor: theme.surface }]}>
+            style={styles.topPill}>
+            <Glass style={[StyleSheet.absoluteFill, styles.pillGlass]} />
             {meta.locked && <Icon icon={LuLock} size={13} color={theme.textSecondary} />}
             <Text style={[styles.topText, { color: theme.text }]}>{meta.code}</Text>
             <Icon icon={LuShare2} size={13} color={theme.textSecondary} />
@@ -287,20 +298,31 @@ export default function RideScreen() {
         </View>
       )}
 
+      {/* Banners leave room on the right for the button column. */}
       <AlertBanners
-        top={insets.top + (nav.active ? 96 : 54)}
+        top={overlayTop}
+        right={14 + Size.fab + 10}
         onPress={(b) => b.uid && b.uid !== uid && focusRider(b.uid)}
       />
 
       {/* Floating controls above the panel */}
       <View style={[styles.sos, { bottom: panelH + 12 }]}>
+        {nav.active && !nav.following && <RecenterButton onPress={nav.recenter} />}
         <SosButton
           active={sosActive}
           onTrigger={() => setStatus(id, uid, 'sos').catch(() => {})}
           onClear={() => clearSos(id, uid).catch(() => {})}
         />
       </View>
-      <View style={[styles.fabs, { bottom: panelH + 12 }]}>
+      {/* Top right, under the top bar / ride view bar, so the panel never covers it. */}
+      <View style={[styles.fabs, { top: overlayTop }]}>
+        <IconButton
+          icon={LuLayers}
+          variant="map"
+          floating
+          accessibilityLabel="Map type and details"
+          onPress={() => setShowLayers(true)}
+        />
         {nav.active ? (
           <CompassButton
             heading={compass.heading}
@@ -322,15 +344,10 @@ export default function RideScreen() {
           }}
         />
         {nav.active ? (
-          !nav.following && (
-            <IconButton
-              icon={LuLocateFixed}
-              variant="map"
-              floating
-              accessibilityLabel="Re-centre and follow me"
-              onPress={nav.recenter}
-            />
-          )
+          <>
+            <IconButton icon={LuPlus} variant="map" floating accessibilityLabel="Zoom in" onPress={() => nav.zoomBy(1)} />
+            <IconButton icon={LuMinus} variant="map" floating accessibilityLabel="Zoom out" onPress={() => nav.zoomBy(-1)} />
+          </>
         ) : (
           <>
             <IconButton
@@ -338,7 +355,7 @@ export default function RideScreen() {
               variant="map"
               floating
               accessibilityLabel="Show my location"
-              onPress={() => myPos && map.current?.animateToRegion({ ...myPos, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 500)}
+              onPress={() => centerOn(map, myPos)}
             />
             <IconButton
               icon={LuNavigation}
@@ -383,6 +400,8 @@ export default function RideScreen() {
         />
       )}
 
+      {showLayers && <LayersSheet onClose={() => setShowLayers(false)} />}
+
       {showSteps && nav.target && (
         <StepsSheet
           steps={nav.route?.steps ?? []}
@@ -410,10 +429,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
   },
+  pillGlass: { borderRadius: Size.controlSm / 2 },
   topText: { fontSize: Type.small + 1, fontWeight: '700', letterSpacing: 0.3 },
-  sos: { position: 'absolute', left: 14 },
+  sos: { position: 'absolute', left: 14, gap: 10, alignItems: 'flex-start' },
   fabs: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' },
   panelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
 });

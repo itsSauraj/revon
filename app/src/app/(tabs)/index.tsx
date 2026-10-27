@@ -1,11 +1,14 @@
 import * as Location from 'expo-location';
-import { Redirect, router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
+  LuLayers,
   LuLocateFixed,
   LuMapPin,
+  LuMinus,
   LuNavigation,
+  LuPlus,
   LuRoute,
   LuSearch,
   LuUserPlus,
@@ -14,19 +17,25 @@ import {
 } from 'react-icons/lu';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LayersSheet } from '@/components/map/layers-sheet';
 import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
+import { RecenterButton } from '@/components/nav/recenter-button';
 import { StepsSheet } from '@/components/nav/steps-sheet';
+import { TripCard } from '@/components/nav/trip-card';
 import { PlaceMarker } from '@/components/ride/place-marker';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { CompassButton, isRotated } from '@/components/ui/compass-button';
+import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { Size, Type } from '@/constants/theme';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
+import { centerOn } from '@/lib/camera';
 import { showMessage } from '@/lib/dialog';
 import { decodePolyline, formatDistance, formatDuration } from '@/lib/geo';
 import {
@@ -53,6 +62,8 @@ export default function MapHome() {
 
   const [me, setMe] = useState<Fix | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
+  const [navH, setNavH] = useState(110);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [searchToken, setSearchToken] = useState(newSessionToken);
@@ -129,7 +140,8 @@ export default function MapHome() {
 
   const routeCoords = useMemo(() => (route ? decodePolyline(route.polyline) : []), [route]);
 
-  if (!profile) return <Redirect href="/onboarding" />;
+  // The root layout only shows this screen once the profile is complete.
+  if (!profile) return null;
 
   const choose = async (s: Suggestion) => {
     Keyboard.dismiss();
@@ -205,12 +217,12 @@ export default function MapHome() {
         {nav.active ? (
           <>
             {nav.travelled.length > 1 && (
-              <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} />
+              <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} zIndex={1} />
             )}
-            {nav.ahead.length > 1 && <Polyline coordinates={nav.ahead} strokeColor={theme.route} strokeWidth={6} />}
+            <RouteLine coordinates={nav.ahead} width={6} />
           </>
         ) : (
-          routeCoords.length > 1 && <Polyline coordinates={routeCoords} strokeColor={theme.route} strokeWidth={5} />
+          <RouteLine coordinates={routeCoords} />
         )}
       </MapView>
 
@@ -218,6 +230,7 @@ export default function MapHome() {
         <>
           <NavBar
             targetName={nav.target.name}
+            nextTurn={nav.nextTurn}
             remainingM={nav.remainingM}
             remainingS={nav.remainingS}
             loading={nav.loading}
@@ -226,23 +239,29 @@ export default function MapHome() {
             arrived={nav.arrived}
             onSteps={() => setShowSteps(true)}
             onExit={nav.stop}
+            onHeight={setNavH}
           />
-          <View style={[styles.mapButtons, { bottom: 24 }]}>
+          {/* Top right, just under the next-turn card. */}
+          <View style={[styles.mapButtons, { top: insets.top + 8 + navH + 10 }]}>
+            <IconButton
+              icon={LuLayers}
+              variant="map"
+              floating
+              accessibilityLabel="Map type and details"
+              onPress={() => setShowLayers(true)}
+            />
             <CompassButton
               heading={compass.heading}
               active={nav.northUp}
               accessibilityLabel={nav.northUp ? 'Switch to heading-up' : 'Switch to north-up'}
               onPress={nav.toggleNorthUp}
             />
-            {!nav.following && (
-              <IconButton
-                icon={LuLocateFixed}
-                variant="map"
-                floating
-                accessibilityLabel="Re-centre and follow me"
-                onPress={nav.recenter}
-              />
-            )}
+            <IconButton icon={LuPlus} variant="map" floating accessibilityLabel="Zoom in" onPress={() => nav.zoomBy(1)} />
+            <IconButton icon={LuMinus} variant="map" floating accessibilityLabel="Zoom out" onPress={() => nav.zoomBy(-1)} />
+          </View>
+          <View style={styles.tripCard}>
+            {!nav.following && <RecenterButton onPress={nav.recenter} />}
+            <TripCard from={nav.origin} toName={nav.target.name} toAddress={nav.target.address} />
           </View>
           {showSteps && (
             <StepsSheet
@@ -258,7 +277,7 @@ export default function MapHome() {
         <>
           {/* Search */}
           <View style={[styles.searchWrap, { top: insets.top + 8 }]}>
-            <View style={[styles.search, { backgroundColor: theme.surface }]}>
+            <Glass style={styles.search}>
               <Icon icon={LuSearch} size={Size.iconSm} color={theme.textSecondary} />
               <TextInput
                 value={query}
@@ -274,7 +293,7 @@ export default function MapHome() {
               {query.length > 0 && (
                 <IconButton icon={LuX} variant="ghost" size={28} accessibilityLabel="Clear search" onPress={clear} />
               )}
-            </View>
+            </Glass>
             {visibleSuggestions.length > 0 && (
               <FlatList
                 data={visibleSuggestions}
@@ -303,19 +322,30 @@ export default function MapHome() {
             )}
           </View>
 
-          <View style={[styles.mapButtons, { bottom: destination ? 262 : 80 }]}>
-            {isRotated(compass.heading) && <CompassButton heading={compass.heading} onPress={compass.resetNorth} />}
-            <IconButton
-              icon={LuLocateFixed}
-              variant="map"
-              floating
-              accessibilityLabel="Show my location"
-              onPress={() => me && map.current?.animateToRegion({ ...me, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 500)}
-            />
-          </View>
+          {/* Top right, under the search bar, so the bottom card and pills never cover it. Hidden while
+              suggestions are open. */}
+          {visibleSuggestions.length === 0 && (
+            <View style={[styles.mapButtons, { top: insets.top + 8 + Size.control + 10 }]}>
+              <IconButton
+                icon={LuLayers}
+                variant="map"
+                floating
+                accessibilityLabel="Map type and details"
+                onPress={() => setShowLayers(true)}
+              />
+              <IconButton
+                icon={LuLocateFixed}
+                variant="map"
+                floating
+                accessibilityLabel="Show my location"
+                onPress={() => centerOn(map, me)}
+              />
+              {isRotated(compass.heading) && <CompassButton heading={compass.heading} onPress={compass.resetNorth} />}
+            </View>
+          )}
 
           {destination ? (
-            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+            <Glass style={styles.card}>
               <Text style={[styles.destName, { color: theme.text }]} numberOfLines={1}>
                 {destination.name}
               </Text>
@@ -353,7 +383,7 @@ export default function MapHome() {
                   style={styles.flex}
                 />
               </View>
-            </View>
+            </Glass>
           ) : (
             <View style={styles.bottomPills}>
               {activeRide && (
@@ -370,12 +400,14 @@ export default function MapHome() {
                 icon={LuUserPlus}
                 variant="map"
                 onPress={() => router.push('/join')}
-                style={styles.shadow}
+                style={styles.glassShadow}
               />
             </View>
           )}
         </>
       )}
+
+      {showLayers && <LayersSheet onClose={() => setShowLayers(false)} />}
     </View>
   );
 }
@@ -388,10 +420,19 @@ const shadow = {
   elevation: 4,
 };
 
+// Glass surfaces get no Android elevation: the shadow would show through the translucent tint.
+const glassShadow = {
+  shadowColor: '#000',
+  shadowOpacity: 0.14,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+};
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1 },
   shadow,
+  glassShadow,
   searchWrap: { position: 'absolute', left: 12, right: 12 },
   search: {
     height: Size.control,
@@ -401,7 +442,8 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingLeft: 14,
     paddingRight: 6,
-    ...shadow,
+    overflow: 'hidden',
+    ...glassShadow,
   },
   searchInput: { flex: 1, fontSize: Type.body, height: '100%' },
   suggestions: { marginTop: 6, borderRadius: Size.radius, maxHeight: 300, ...shadow },
@@ -423,10 +465,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 16,
     paddingBottom: 20,
-    borderTopLeftRadius: Size.radiusLg,
-    borderTopRightRadius: Size.radiusLg,
+    borderTopLeftRadius: Size.radiusLg + 4,
+    borderTopRightRadius: Size.radiusLg + 4,
+    overflow: 'hidden',
     gap: 4,
-    ...shadow,
+    ...glassShadow,
   },
   destName: { fontSize: Type.title, fontWeight: '700' },
   destAddr: { fontSize: Type.small - 1 },
@@ -435,4 +478,5 @@ const styles = StyleSheet.create({
   buttons: { flexDirection: 'row', gap: 8, marginTop: 12 },
   mapButtons: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' },
   bottomPills: { position: 'absolute', left: 14, right: 14, bottom: 16, gap: 8 },
+  tripCard: { position: 'absolute', left: 12, right: 12, bottom: 16, gap: 10 },
 });

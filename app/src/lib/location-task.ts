@@ -12,7 +12,8 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
-import { auth, DATABASE_URL } from './firebase';
+import { getIdToken } from './auth';
+import { DATABASE_URL } from './firebase';
 import {
   ARRIVED_M,
   decodePolyline,
@@ -63,8 +64,7 @@ async function getRuntime(): Promise<RuntimeState | null> {
 }
 
 async function rest(method: 'PUT' | 'PATCH' | 'POST', path: string, body: unknown) {
-  await auth.authStateReady();
-  const token = await auth.currentUser?.getIdToken();
+  const token = await getIdToken().catch(() => null);
   if (!token) return;
   await fetch(`${DATABASE_URL}/${path}.json?auth=${token}`, {
     method,

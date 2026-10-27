@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
 import { Size, Type } from '@/constants/theme';
 import { GAP_ALERT_M, type Rider } from '@/hooks/use-ride';
@@ -54,7 +55,7 @@ export function RidePanel(p: Props) {
   const active = p.riders.length;
 
   return (
-    <View style={[styles.panel, { backgroundColor: theme.surface, paddingBottom: insets.bottom + 10 }]}>
+    <Glass style={[styles.panel, { paddingBottom: insets.bottom + 10 }]}>
       <Pressable
         onPress={() => setExpanded((e) => !e)}
         style={styles.handleRow}
@@ -156,20 +157,21 @@ export function RidePanel(p: Props) {
         <Button label="Invite" icon={LuUserPlus} variant="inverse" size="sm" onPress={p.onInvite} style={styles.flex} />
         <Button label="Leave" icon={LuLogOut} size="sm" onPress={p.onLeave} style={styles.flex} />
       </View>
-    </View>
+    </Glass>
   );
 }
 
 const styles = StyleSheet.create({
   panel: {
-    borderTopLeftRadius: Size.radiusLg,
-    borderTopRightRadius: Size.radiusLg,
+    borderTopLeftRadius: Size.radiusLg + 4,
+    borderTopRightRadius: Size.radiusLg + 4,
     paddingHorizontal: 14,
     gap: 10,
+    overflow: 'hidden',
+    borderBottomWidth: 0,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 10,
   },
   handleRow: { paddingTop: 6 },
   handle: { alignSelf: 'center', width: 32, height: 4, borderRadius: 2, marginBottom: 8 },

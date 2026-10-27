@@ -4,6 +4,7 @@ import { LuNavigation2 } from 'react-icons/lu';
 import { Size } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+import { Glass } from './glass';
 import { Icon } from './icon';
 
 type Props = {
@@ -35,11 +36,12 @@ export function CompassButton({ heading, onPress, accessibilityLabel = 'Face nor
       style={({ pressed }) => [
         styles.btn,
         {
-          backgroundColor: active ? theme.inverse : theme.surface,
+          backgroundColor: active ? theme.inverse : 'transparent',
           opacity: pressed ? 0.75 : 1,
         },
         style,
       ]}>
+      {!active && <Glass interactive style={[StyleSheet.absoluteFill, { borderRadius: Size.fab / 2 }]} />}
       <View style={{ transform: [{ rotate: `${-heading}deg` }] }}>
         <Icon icon={LuNavigation2} size={Math.round(Size.fab * 0.42)} color={active ? theme.onInverse : theme.text} />
       </View>
@@ -58,6 +60,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
   },
 });

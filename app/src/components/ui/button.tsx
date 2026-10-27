@@ -4,9 +4,10 @@ import type { IconType } from 'react-icons';
 import { Size, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+import { Glass } from './glass';
 import { Icon } from './icon';
 
-/** `map` is for buttons floating on the map: theme surface with a shadow-friendly solid border. */
+/** `map` is for buttons floating on the map: glass in the theme's colors. */
 export type ButtonVariant = 'accent' | 'inverse' | 'outline' | 'danger' | 'ghost' | 'map';
 
 type Props = {
@@ -29,7 +30,7 @@ export function Button({ label, onPress, icon, variant = 'outline', size = 'md',
     outline: { bg: 'transparent', fg: theme.text, border: theme.border },
     danger: { bg: theme.danger, fg: theme.onDanger, border: theme.danger },
     ghost: { bg: 'transparent', fg: theme.text, border: 'transparent' },
-    map: { bg: theme.surface, fg: theme.text, border: theme.surface },
+    map: { bg: 'transparent', fg: theme.text, border: 'transparent' },
   };
   const c = palette[variant];
   const h = size === 'sm' ? Size.controlSm : Size.control;
@@ -46,6 +47,7 @@ export function Button({ label, onPress, icon, variant = 'outline', size = 'md',
         { opacity: disabled ? 0.45 : pressed ? 0.75 : 1 },
         style,
       ]}>
+      {variant === 'map' && <Glass interactive style={[StyleSheet.absoluteFill, { borderRadius: h / 2 }]} />}
       {loading ? (
         <ActivityIndicator size="small" color={c.fg} />
       ) : (

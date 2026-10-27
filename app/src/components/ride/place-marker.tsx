@@ -15,16 +15,16 @@ type Props = {
   onCalloutPress?: () => void;
 };
 
-/** Destination / regroup / target pin: a small disc with an icon and a pointer, in theme colors. */
+/** Destination / regroup / target pin: an accent disc with a dark outline and pointer, like the route line. */
 export function PlaceMarker({ coordinate, icon, title, description, onCalloutPress }: Props) {
   const theme = useTheme();
   // Rasterise briefly after mount and after a theme change (see MemberMarker).
   const [settled, setSettled] = useState<string | null>(null);
-  const tracking = settled !== theme.rider;
+  const tracking = settled !== theme.route;
   useEffect(() => {
-    const t = setTimeout(() => setSettled(theme.rider), 600);
+    const t = setTimeout(() => setSettled(theme.route), 600);
     return () => clearTimeout(t);
-  }, [theme.rider]);
+  }, [theme.route]);
 
   return (
     <Marker
@@ -36,10 +36,10 @@ export function PlaceMarker({ coordinate, icon, title, description, onCalloutPre
       tracksViewChanges={tracking}
       zIndex={50}>
       <View style={styles.wrap}>
-        <View style={[styles.disc, { backgroundColor: theme.rider, borderColor: theme.markerBorder }]}>
-          <Icon icon={icon} size={14} color={theme.riderInk} />
+        <View style={[styles.disc, { backgroundColor: theme.route, borderColor: theme.routeOutline }]}>
+          <Icon icon={icon} size={14} color={theme.onAccent} />
         </View>
-        <View style={[styles.pointer, { backgroundColor: theme.rider }]} />
+        <View style={[styles.pointer, { backgroundColor: theme.routeOutline }]} />
       </View>
     </Marker>
   );

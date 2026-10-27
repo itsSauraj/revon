@@ -5,7 +5,7 @@
  * The map follows the app theme (dark map style in dark mode), and marker labels use a themed
  * callout instead of the default white bubble.
  */
-import { type Ref } from 'react';
+import { type Ref, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import RNMapView, {
   Callout,
@@ -18,6 +18,7 @@ import RNMapView, {
 import { Size, Type } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
+import { useMapLayers } from '@/lib/map-layers';
 
 export { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
@@ -42,9 +43,39 @@ const DARK_STYLE: MapStyleElement[] = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4A4A4A' }] },
 ];
 
+const NATIVE_TYPE = { default: 'standard', satellite: 'hybrid', terrain: 'terrain' } as const;
+
 export function MapView({ ref, ...props }: MapViewProps & { ref?: Ref<RNMapView> }) {
   const dark = useColorScheme() === 'dark';
-  return <RNMapView ref={ref} customMapStyle={dark ? DARK_STYLE : []} userInterfaceStyle={dark ? 'dark' : 'light'} {...props} />;
+  const layers = useMapLayers();
+  const inner = useRef<RNMapView | null>(null);
+
+  // 3D buildings only show when the map is tilted, so tilt when they're switched on.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    inner.current?.animateCamera({ pitch: layers.buildings ? 45 : 0 }, { duration: 500 });
+  }, [layers.buildings]);
+
+  return (
+    <RNMapView
+      ref={(r) => {
+        inner.current = r;
+        if (typeof ref === 'function') ref(r);
+        else if (ref) ref.current = r;
+      }}
+      mapType={NATIVE_TYPE[layers.type]}
+      showsTraffic={layers.traffic}
+      showsBuildings={layers.buildings}
+      // The dark style only applies to the default map; satellite and terrain keep their imagery.
+      customMapStyle={dark && layers.type === 'default' ? DARK_STYLE : []}
+      userInterfaceStyle={dark ? 'dark' : 'light'}
+      {...props}
+    />
+  );
 }
 
 /** Marker whose title/description show in a small themed label instead of the default bubble. */

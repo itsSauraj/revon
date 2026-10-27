@@ -67,3 +67,15 @@ export type RideEvent = {
 export type Regroup = { lat: number; lng: number; label: string; setBy: string; ts: number };
 
 export type Profile = { name: string; phone: string; sharePhone: boolean };
+
+/** The signed-in Firebase user, platform-independent. */
+export type AppUser = {
+  uid: string;
+  email: string | null;
+  emailVerified: boolean;
+  /** E.164, set once the phone number has been verified by OTP and linked to the account. */
+  phoneNumber: string | null;
+  displayName: string | null;
+  /** e.g. "google.com", "password", "phone". */
+  providers: string[];
+};

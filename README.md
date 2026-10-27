@@ -12,8 +12,14 @@ over to check a chat app or call around.
 - Full-screen Google Maps with place search (Places API) and long-press to drop a pin
 - Route preview with distance and time, with options to avoid highways and tolls
 - Two-wheeler routing where Google supports it, otherwise driving
-- **In-app ride view**: the map follows you heading-up, the ridden part of the route greys out,
-  distance, time and arrival time update as you go, and it re-routes when you leave the route
+- **In-app ride view**: next-turn card (turn arrow, live distance to the turn, street), time/distance left and
+  arrival time, From → To card, heading-up or north-up camera, zoom controls, ridden part greyed out,
+  automatic re-route when you leave the route
+
+**Accounts and onboarding**
+- Animated welcome intro (convoy, live pins, SOS, navigation)
+- Sign in with **Google** or **email/password** (strict validation, live password rules, email verification, password reset)
+- Mobile number with **country code picker**, validated per country, verified by **SMS OTP** (Firebase Phone Auth)
 
 **Group rides**
 - Start a ride to a destination and invite riders with a 6-character code or a `revon://join/CODE` link
@@ -59,7 +65,7 @@ over to check a chat app or call around.
 | Location | `expo-location` + `expo-task-manager` background task |
 | Alerts | `expo-notifications`, `expo-speech` |
 | UI | Monochrome theme with one accent (`#C8F135`); icons from [react-icons](https://react-icons.github.io/react-icons/) (Lucide set), drawn with `react-native-svg` on mobile |
-| Backend | Firebase Realtime Database + Anonymous Auth (Firebase JS SDK) |
+| Backend | Firebase Auth (Google, email/password, phone) + Realtime Database: React Native Firebase on Android/iOS, Firebase JS SDK on web |
 
 ## Getting started
 
@@ -137,12 +143,12 @@ You need two devices, or one device and an emulator with mock locations.
   fully closed apps needs Cloud Functions + FCM (planned).
 - Invite links use the `revon://` scheme; https links that install-then-join need a hosted domain.
 - Calling uses the phone dialer; there is no in-app voice.
-- The in-app ride view has no spoken turn-by-turn prompts: Google's Maps Platform Terms
-  (§3.2.3(d)(iv)) don't allow building Google-Maps-like real-time navigation from the Routes data.
-  A static directions list is available, plus an optional hand-off to Google Maps for voice guidance.
-
-## Roadmap
-
+- **Release blocker:** the live next-turn card is built from Routes API data. Google's Maps Platform
+  Terms (§3.2.3(d)(iv)) don't allow real-time navigation built that way; replace it with the Google
+  Navigation SDK before a store release. There are no spoken prompts; the directions list offers a
+  hand-off to Google Maps for voice guidance.
+- Liquid glass is native on iOS 26+; Android shows translucent panels (no blur over the native map) and
+  web uses a CSS backdrop blur.
 - Push notifications via Cloud Functions + FCM (SOS reaches every rider, even with the app closed)
 - https invite links (Android App Links / iOS Universal Links)
 - Google Sign-In and ride history

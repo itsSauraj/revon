@@ -1,20 +1,42 @@
+/**
+ * App session: welcome screen seen, signed-in user, rider profile, and which onboarding step the
+ * user is on. The root layout routes on `stage`.
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { useSyncExternalStore } from 'react';
 
-import { auth, isFirebaseConfigured } from './firebase';
-import type { Profile } from './types';
+import {
+  currentUser,
+  onUserChanged,
+  reloadUser,
+  signOut as authSignOut,
+} from './auth';
+import { db, get, ref, update } from './db';
+import { isFirebaseConfigured } from './firebase';
+import type { AppUser, Profile } from './types';
 
-const PROFILE_KEY = 'revon.profile';
+const WELCOME_KEY = 'revon.welcomeSeen';
+const profileKey = (uid: string) => `revon.profile.${uid}`;
+
+/**
+ * - welcome: first launch, show the intro.
+ * - auth: sign in / register.
+ * - verifyEmail: email/password account whose email isn't verified yet.
+ * - phone: needs a name and a verified phone number.
+ * - ready: fully set up; the app.
+ */
+export type Stage = 'loading' | 'welcome' | 'auth' | 'verifyEmail' | 'phone' | 'ready';
 
 type SessionState = {
   ready: boolean;
+  welcomeSeen: boolean;
+  user: AppUser | null;
   uid: string | null;
   profile: Profile | null;
   error: string | null;
 };
 
-let state: SessionState = { ready: false, uid: null, profile: null, error: null };
+let state: SessionState = { ready: false, welcomeSeen: false, user: null, uid: null, profile: null, error: null };
 const listeners = new Set<() => void>();
 
 function setState(patch: Partial<SessionState>) {
@@ -22,40 +44,119 @@ function setState(patch: Partial<SessionState>) {
   listeners.forEach((l) => l());
 }
 
+export function stageOf(s: SessionState): Stage {
+  if (!s.ready) return 'loading';
+  if (!s.welcomeSeen) return 'welcome';
+  if (!s.user) return 'auth';
+  if (s.user.providers.includes('password') && !s.user.emailVerified) return 'verifyEmail';
+  if (!s.user.phoneNumber || !s.profile?.name) return 'phone';
+  return 'ready';
+}
+
+async function loadProfile(user: AppUser): Promise<Profile | null> {
+  // Local cache first (works offline), then the server copy if there is one.
+  let cached: Profile | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(profileKey(user.uid));
+    cached = raw ? (JSON.parse(raw) as Profile) : null;
+  } catch {
+    cached = null;
+  }
+  try {
+    const snap = await get(ref(db, `users/${user.uid}`));
+    const remote = snap.val() as (Profile & { phoneVerified?: boolean }) | null;
+    if (remote?.name) {
+      const profile = { name: remote.name, phone: user.phoneNumber ?? remote.phone ?? '', sharePhone: remote.sharePhone ?? true };
+      await AsyncStorage.setItem(profileKey(user.uid), JSON.stringify(profile)).catch(() => {});
+      return profile;
+    }
+  } catch {
+    // offline or rules not deployed: fall back to the cache
+  }
+  return cached ? { ...cached, phone: user.phoneNumber ?? cached.phone } : null;
+}
+
 let started = false;
 
-/** Restores the saved profile and signs in anonymously. Safe to call more than once. */
+/** Open the app anyway if Firebase hasn't answered by then (slow or blocked network). */
+const READY_TIMEOUT_MS = 10_000;
+
 export function startSession() {
   if (started) return;
   started = true;
 
-  const profilePromise = AsyncStorage.getItem(PROFILE_KEY)
-    .then((raw) => (raw ? (JSON.parse(raw) as Profile) : null))
-    .catch(() => null);
+  const welcomePromise = AsyncStorage.getItem(WELCOME_KEY)
+    .then((v) => v === '1')
+    .catch(() => false);
 
   if (!isFirebaseConfigured) {
-    profilePromise.then((profile) =>
-      setState({ ready: true, profile, error: 'Firebase is not configured. See backend/README.md.' }),
+    welcomePromise.then((welcomeSeen) =>
+      setState({ ready: true, welcomeSeen, error: 'Firebase is not configured. See backend/README.md.' }),
     );
     return;
   }
 
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      try {
-        await signInAnonymously(auth);
-      } catch (e) {
-        setState({ ready: true, profile: await profilePromise, error: `Sign-in failed: ${String(e)}` });
-      }
+  setTimeout(() => {
+    if (state.ready) return;
+    console.warn('[revon] Firebase is taking too long; opening the app without a connection.');
+    welcomePromise.then((welcomeSeen) =>
+      setState({
+        ready: true,
+        welcomeSeen,
+        error: "Can't reach the server. Check your internet connection; revon keeps retrying.",
+      }),
+    );
+  }, READY_TIMEOUT_MS);
+
+  onUserChanged(async (user) => {
+    const welcomeSeen = await welcomePromise;
+    // Old anonymous sessions from earlier builds don't count as signed in.
+    if (user && user.providers.length === 0) {
+      await authSignOut().catch(() => {});
       return;
     }
-    setState({ ready: true, uid: user.uid, profile: await profilePromise, error: null });
+    const profile = user ? await loadProfile(user) : null;
+    setState({ ready: true, welcomeSeen: state.welcomeSeen || welcomeSeen, user, uid: user?.uid ?? null, profile, error: null });
   });
 }
 
-export async function saveProfile(profile: Profile) {
-  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+export async function markWelcomeSeen() {
+  await AsyncStorage.setItem(WELCOME_KEY, '1').catch(() => {});
+  setState({ welcomeSeen: true });
+}
+
+/** Re-reads the user (email verified? phone linked?) and moves to the next stage if so. */
+export async function refreshUser() {
+  const user = (await reloadUser()) ?? currentUser();
+  const profile = user ? (state.profile ?? (await loadProfile(user))) : null;
+  setState({ user, uid: user?.uid ?? null, profile });
+  return user;
+}
+
+/** Saves the rider profile locally and to users/{uid}. The phone is always the verified one. */
+export async function saveProfile(patch: Partial<Profile> & { name: string }) {
+  const user = state.user ?? currentUser();
+  if (!user) throw new Error('You are signed out.');
+  const profile: Profile = {
+    name: patch.name,
+    phone: user.phoneNumber ?? patch.phone ?? state.profile?.phone ?? '',
+    sharePhone: patch.sharePhone ?? state.profile?.sharePhone ?? true,
+  };
+  await AsyncStorage.setItem(profileKey(user.uid), JSON.stringify(profile));
   setState({ profile });
+  await update(ref(db, `users/${user.uid}`), {
+    name: profile.name,
+    phone: profile.phone || null,
+    phoneVerified: Boolean(user.phoneNumber),
+    sharePhone: profile.sharePhone,
+    email: user.email ?? null,
+    updatedAt: Date.now(),
+  }).catch((e) => console.warn('[revon] Could not save profile to the server:', e));
+}
+
+export async function signOut() {
+  await authSignOut();
+  setState({ user: null, uid: null, profile: null });
 }
 
 export function getSession() {
@@ -63,11 +164,12 @@ export function getSession() {
 }
 
 export function useSession() {
-  return useSyncExternalStore(
+  const s = useSyncExternalStore(
     (l) => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
     () => state,
   );
+  return { ...s, stage: stageOf(s) };
 }

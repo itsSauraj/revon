@@ -1,6 +1,5 @@
-import { get, push, ref, serverTimestamp, update } from 'firebase/database';
+import { db, get, push, ref, serverTimestamp, update } from './db';
 
-import { db } from './firebase';
 import type {
   Member,
   Place,

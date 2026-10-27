@@ -1,24 +1,5 @@
 import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { IconType } from 'react-icons';
-import {
-  LuArrowDownLeft,
-  LuArrowDownRight,
-  LuArrowUp,
-  LuArrowUpLeft,
-  LuArrowUpRight,
-  LuCircleDot,
-  LuCornerUpLeft,
-  LuCornerUpRight,
-  LuMerge,
-  LuRedo2,
-  LuRotateCcw,
-  LuRotateCw,
-  LuShip,
-  LuSplit,
-  LuUndo2,
-  LuVolume2,
-  LuX,
-} from 'react-icons/lu';
+import { LuVolume2, LuX } from 'react-icons/lu';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -28,27 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDistance } from '@/lib/geo';
 import type { RouteStep } from '@/lib/google';
 
-const MANEUVER_ICON: Record<string, IconType> = {
-  TURN_LEFT: LuCornerUpLeft,
-  TURN_RIGHT: LuCornerUpRight,
-  TURN_SLIGHT_LEFT: LuArrowUpLeft,
-  TURN_SLIGHT_RIGHT: LuArrowUpRight,
-  TURN_SHARP_LEFT: LuArrowDownLeft,
-  TURN_SHARP_RIGHT: LuArrowDownRight,
-  UTURN_LEFT: LuUndo2,
-  UTURN_RIGHT: LuRedo2,
-  STRAIGHT: LuArrowUp,
-  RAMP_LEFT: LuArrowUpLeft,
-  RAMP_RIGHT: LuArrowUpRight,
-  MERGE: LuMerge,
-  FORK_LEFT: LuSplit,
-  FORK_RIGHT: LuSplit,
-  ROUNDABOUT_LEFT: LuRotateCcw,
-  ROUNDABOUT_RIGHT: LuRotateCw,
-  DEPART: LuCircleDot,
-  FERRY: LuShip,
-  FERRY_TRAIN: LuShip,
-};
+import { maneuverIcon } from './maneuver';
 
 type Props = {
   steps: RouteStep[];
@@ -57,7 +18,7 @@ type Props = {
   onOpenGoogleMaps?: () => void;
 };
 
-/** The full list of directions for the current route (an overview, not live guidance). */
+/** The full list of directions for the current route. */
 export function StepsSheet({ steps, onClose, onOpenGoogleMaps }: Props) {
   const theme = useTheme();
   return (
@@ -75,7 +36,7 @@ export function StepsSheet({ steps, onClose, onOpenGoogleMaps }: Props) {
           renderItem={({ item }) => (
             <View style={styles.row}>
               <View style={[styles.iconWrap, { backgroundColor: theme.backgroundElement }]}>
-                <Icon icon={MANEUVER_ICON[item.maneuver] ?? LuArrowUp} size={Size.iconSm} />
+                <Icon icon={maneuverIcon(item.maneuver)} size={Size.iconSm} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.instruction, { color: theme.text }]}>{item.instruction}</Text>

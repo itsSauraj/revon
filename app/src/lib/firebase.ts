@@ -1,40 +1,16 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import { getApp, getApps, initializeApp } from 'firebase/app';
-import {
-  type Auth,
-  getAuth,
-  // Exported by the React Native build of @firebase/auth, which Metro resolves at runtime.
-  // @ts-ignore -- missing from the default (browser) type entry point
-  getReactNativePersistence,
-  initializeAuth,
-} from 'firebase/auth';
-import { getDatabase } from 'firebase/database';
+/**
+ * Firebase on Android/iOS: React Native Firebase (native SDKs), configured from
+ * google-services.json / GoogleService-Info.plist at build time. Web uses firebase.web.ts.
+ */
+import { getApp, getApps } from '@react-native-firebase/app';
+import { getDatabase } from '@react-native-firebase/database';
 
-const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-};
+export const DATABASE_URL = (process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL ?? '').replace(/\/$/, '');
 
-export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.databaseURL);
+/** False when the app was built without the Firebase config files (see backend/README.md). */
+export const isFirebaseConfigured = getApps().length > 0;
 
-export const DATABASE_URL = (firebaseConfig.databaseURL ?? '').replace(/\/$/, '');
-
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-
-function createAuth(): Auth {
-  // On web the browser build of Firebase Auth persists to IndexedDB by itself.
-  if (Platform.OS === 'web') return getAuth(app);
-  try {
-    return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
-  } catch {
-    // Already initialized (fast refresh).
-    return getAuth(app);
-  }
-}
-
-export const auth = createAuth();
-export const db = getDatabase(app);
+// Pass the URL explicitly so it works even if the config file predates the database.
+export const db = isFirebaseConfigured
+  ? getDatabase(getApp(), DATABASE_URL || undefined)
+  : (null as unknown as ReturnType<typeof getDatabase>);

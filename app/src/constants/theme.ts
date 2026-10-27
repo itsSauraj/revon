@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 /**
  * Monochrome palette. `accent` (#C8F135) is the only brand color — use it sparingly: the main call to
- * action on a screen, your own marker, and "arrived". Always put dark text on it. `danger` is
+ * action on a screen, the route line and place pins, your own marker, and "arrived". Always put dark text on it. `danger` is
  * reserved for SOS. Everything, including the map, follows the system light/dark theme.
  */
 export const Colors = {
@@ -23,8 +23,14 @@ export const Colors = {
     onAccent: '#0A0A0A',
     danger: '#E5484D',
     onDanger: '#FFFFFF',
+    // Frosted surfaces floating on the map (see components/ui/glass).
+    glass: 'rgba(255,255,255,0.72)',
+    glassSolid: 'rgba(255,255,255,0.9)',
+    glassBorder: 'rgba(0,0,0,0.08)',
     // Drawn on the map (the map itself follows the theme).
-    route: '#0A0A0A',
+    // Route line and place pins use the accent, outlined dark so they read on light/satellite maps.
+    route: '#C8F135',
+    routeOutline: '#0A0A0A',
     routeRidden: '#B5B5B5',
     groupRoute: '#8A8A8A',
     rider: '#0A0A0A',
@@ -50,8 +56,12 @@ export const Colors = {
     onAccent: '#0A0A0A',
     danger: '#F2555A',
     onDanger: '#FFFFFF',
+    glass: 'rgba(21,21,21,0.62)',
+    glassSolid: 'rgba(21,21,21,0.86)',
+    glassBorder: 'rgba(255,255,255,0.12)',
     // Drawn on the map (the map itself follows the theme).
-    route: '#F2F2F2',
+    route: '#C8F135',
+    routeOutline: '#0A0A0A',
     routeRidden: '#4A4A4A',
     groupRoute: '#6E6E6E',
     rider: '#F2F2F2',

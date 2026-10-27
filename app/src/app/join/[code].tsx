@@ -1,5 +1,4 @@
-import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { get, ref } from 'firebase/database';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { LuMap } from 'react-icons/lu';
@@ -7,7 +6,7 @@ import { LuMap } from 'react-icons/lu';
 import { Button } from '@/components/ui/button';
 import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { db } from '@/lib/firebase';
+import { db, get, ref } from '@/lib/db';
 import { startTracking } from '@/lib/location-task';
 import { joinByCode, normalizeCode } from '@/lib/rides';
 import { useSession } from '@/lib/session';
@@ -44,7 +43,8 @@ export default function JoinRide() {
     };
   }, [code, profile, uid]);
 
-  if (!profile) return <Redirect href={{ pathname: '/onboarding', params: { next: `/join/${code}` } }} />;
+  // The root layout only shows this screen once the profile is complete.
+  if (!profile) return null;
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>

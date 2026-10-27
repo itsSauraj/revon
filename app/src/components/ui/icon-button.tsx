@@ -4,13 +4,14 @@ import type { IconType } from 'react-icons';
 import { Size } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+import { Glass } from './glass';
 import { Icon } from './icon';
 
 type Props = {
   icon: IconType;
   onPress: () => void;
   accessibilityLabel: string;
-  /** `map` is for every button floating on the map, so they all share one style (theme surface). */
+  /** `map` is for every button floating on the map: a glass disc in the theme's colors. */
   variant?: 'surface' | 'inverse' | 'accent' | 'ghost' | 'soft' | 'map';
   size?: number;
   /** Floating buttons over the map get a shadow. */
@@ -35,9 +36,10 @@ export function IconButton({
     ghost: { bg: 'transparent', fg: theme.text },
     // Secondary button inside a card.
     soft: { bg: theme.backgroundElement, fg: theme.text },
-    map: { bg: theme.surface, fg: theme.text },
+    map: { bg: 'transparent', fg: theme.text },
   }[variant];
 
+  const glass = variant === 'map';
   return (
     <Pressable
       accessibilityRole="button"
@@ -46,10 +48,11 @@ export function IconButton({
       hitSlop={6}
       style={({ pressed }) => [
         styles.btn,
-        floating && styles.floating,
+        floating && (glass ? styles.floatingGlass : styles.floating),
         { width: size, height: size, borderRadius: size / 2, backgroundColor: palette.bg, opacity: pressed ? 0.75 : 1 },
         style,
       ]}>
+      {glass && <Glass interactive style={[StyleSheet.absoluteFill, { borderRadius: size / 2 }]} />}
       <Icon icon={icon} size={Math.round(size * 0.42)} color={palette.fg} />
     </Pressable>
   );
@@ -63,5 +66,12 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
+  },
+  // No Android elevation on translucent glass: the shadow would show through it.
+  floatingGlass: {
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
 });

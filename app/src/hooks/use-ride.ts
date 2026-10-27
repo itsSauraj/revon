@@ -1,16 +1,7 @@
-import {
-  limitToLast,
-  onChildAdded,
-  onValue,
-  orderByChild,
-  query,
-  ref,
-  startAt,
-} from 'firebase/database';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { raiseAlert } from '@/lib/alerts';
-import { db } from '@/lib/firebase';
+import { db, limitToLast, onChildAdded, onValue, orderByChild, query, ref, startAt } from '@/lib/db';
 import { decodePolyline, formatDistance, STALE_MS, STOPPED_SPEED } from '@/lib/geo';
 import type { LatLng, Member, Regroup, RideEvent, RideMeta, RiderLocation } from '@/lib/types';
 

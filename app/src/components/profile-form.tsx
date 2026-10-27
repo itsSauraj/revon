@@ -1,54 +1,47 @@
 import { useState } from 'react';
-import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
+import { LuUser } from 'react-icons/lu';
 
+import { TextField } from '@/components/auth/text-field';
 import { Button } from '@/components/ui/button';
-import { Size, Type } from '@/constants/theme';
+import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Profile } from '@/lib/types';
+import { normalizeName, validateName } from '@/lib/validation';
 
-type Props = { initial: Profile | null; submitLabel: string; onSubmit: (p: Profile) => void | Promise<void> };
+type Props = {
+  initial: Profile | null;
+  submitLabel: string;
+  onSubmit: (p: { name: string; sharePhone: boolean }) => void | Promise<void>;
+};
 
+/** Editable rider details. The phone number is the verified one and isn't edited here. */
 export function ProfileForm({ initial, submitLabel, onSubmit }: Props) {
   const theme = useTheme();
   const [name, setName] = useState(initial?.name ?? '');
-  const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [sharePhone, setSharePhone] = useState(initial?.sharePhone ?? false);
+  const [sharePhone, setSharePhone] = useState(initial?.sharePhone ?? true);
+  const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const valid = name.trim().length >= 2;
-  const input = [styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement }];
+  const nameError = validateName(name);
 
   return (
     <View style={styles.form}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>Your name (shown to your group)</Text>
-      <TextInput
+      <TextField
+        label="Name shown to your group"
+        icon={LuUser}
         value={name}
         onChangeText={setName}
-        placeholder="e.g. Alex"
-        placeholderTextColor={theme.textSecondary}
+        onBlur={() => setTouched(true)}
         autoCapitalize="words"
-        maxLength={24}
-        style={input}
-      />
-
-      <Text style={[styles.label, { color: theme.textSecondary }]}>Phone number (optional)</Text>
-      <TextInput
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="+1 555 123 4567"
-        placeholderTextColor={theme.textSecondary}
-        keyboardType="phone-pad"
-        maxLength={20}
-        style={input}
+        autoComplete="name"
+        maxLength={40}
+        error={touched ? nameError : null}
       />
       <View style={styles.switchRow}>
-        <Text style={[styles.switchText, { color: theme.text }]}>
-          Let riders in my group call me
-        </Text>
+        <Text style={[styles.switchText, { color: theme.text }]}>Let riders in my group call me</Text>
         <Switch
-          value={sharePhone && phone.trim().length > 0}
+          value={sharePhone}
           onValueChange={setSharePhone}
-          disabled={!phone.trim()}
           trackColor={{ true: theme.inverse, false: theme.border }}
           thumbColor={theme.surface}
           ios_backgroundColor={theme.border}
@@ -57,17 +50,18 @@ export function ProfileForm({ initial, submitLabel, onSubmit }: Props) {
       <Text style={[styles.hint, { color: theme.textSecondary }]}>
         Your number is only shared with the people in a ride you join, and only while you are in it.
       </Text>
-
       <Button
         label={submitLabel}
         variant="accent"
-        disabled={!valid}
+        disabled={Boolean(nameError)}
         loading={saving}
         style={styles.button}
         onPress={async () => {
+          setTouched(true);
+          if (nameError) return;
           setSaving(true);
           try {
-            await onSubmit({ name: name.trim(), phone: phone.trim(), sharePhone: sharePhone && !!phone.trim() });
+            await onSubmit({ name: normalizeName(name), sharePhone });
           } finally {
             setSaving(false);
           }
@@ -78,11 +72,9 @@ export function ProfileForm({ initial, submitLabel, onSubmit }: Props) {
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 8 },
-  label: { fontSize: Type.small - 1, fontWeight: '600', marginTop: 6 },
-  input: { height: Size.control, borderRadius: Size.radius, borderWidth: 1, paddingHorizontal: 12, fontSize: Type.body },
+  form: { gap: 10 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   switchText: { fontSize: Type.small + 1, flex: 1 },
   hint: { fontSize: Type.tiny + 1 },
-  button: { marginTop: 12 },
+  button: { marginTop: 8 },
 });

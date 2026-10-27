@@ -33,6 +33,7 @@ import { type StyleProp, View, type ViewStyle } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
+import { type MapLayers, useMapLayers } from '@/lib/map-layers';
 
 const API_KEY: string = Constants.expoConfig?.extra?.googleApiKey ?? '';
 // Advanced markers need a map id; Google's demo id is fine for development.
@@ -62,6 +63,39 @@ export type MapRef = {
 const toLiteral = (p: LatLng): google.maps.LatLngLiteral => ({ lat: p.latitude, lng: p.longitude });
 const zoomFor = (latitudeDelta: number) =>
   Math.round(Math.max(2, Math.min(20, Math.log2(360 / Math.max(latitudeDelta, 1e-6)))));
+
+const WEB_TYPE = { default: 'roadmap', satellite: 'hybrid', terrain: 'terrain' } as const;
+
+/** Traffic and bicycling overlays, and tilting for 3D buildings (vector maps draw them when tilted). */
+function LayersController({ layers }: { layers: MapLayers }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !layers.traffic) return;
+    const layer = new google.maps.TrafficLayer();
+    layer.setMap(map);
+    return () => layer.setMap(null);
+  }, [map, layers.traffic]);
+
+  useEffect(() => {
+    if (!map || !layers.bicycling) return;
+    const layer = new google.maps.BicyclingLayer();
+    layer.setMap(map);
+    return () => layer.setMap(null);
+  }, [map, layers.bicycling]);
+
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!map) return;
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    map.moveCamera({ tilt: layers.buildings ? 45 : 0 });
+  }, [map, layers.buildings]);
+
+  return null;
+}
 
 function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?: EdgePadding }) {
   const map = useMap();
@@ -143,6 +177,7 @@ export function MapView({
   const [me, setMe] = useState<LatLng | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const dark = useColorScheme() === 'dark';
+  const layers = useMapLayers();
 
   // Keep the latest callback without re-subscribing to geolocation on every render.
   const onUserLocationRef = useRef(onUserLocationChange);
@@ -173,6 +208,7 @@ export function MapView({
           style={{ width: '100%', height: '100%' }}
           mapId={MAP_ID}
           renderingType={RenderingType.VECTOR}
+          mapTypeId={WEB_TYPE[layers.type]}
           onDragstart={() => onPanDrag?.()}
           onIdle={() => onRegionChangeComplete?.()}
           defaultCenter={initialRegion ? toLiteral(initialRegion) : { lat: 20, lng: 0 }}
@@ -189,6 +225,7 @@ export function MapView({
             if (p) onLongPress?.({ nativeEvent: { coordinate: { latitude: p.lat, longitude: p.lng } } });
           }}>
           <CameraController handle={ref} padding={mapPadding} />
+          <LayersController layers={layers} />
           {showsUserLocation && me && (
             <AdvancedMarker position={toLiteral(me)} zIndex={50} anchorLeft="-50%" anchorTop="-50%" clickable={false}>
               <div style={userDot} />
@@ -279,8 +316,16 @@ export function Marker({ coordinate, title, description, pinColor, anchor, zInde
   );
 }
 
-type PolylineProps = { coordinates: LatLng[]; strokeColor?: string; strokeWidth?: number };
+type PolylineProps = { coordinates: LatLng[]; strokeColor?: string; strokeWidth?: number; zIndex?: number };
 
-export function Polyline({ coordinates, strokeColor, strokeWidth }: PolylineProps) {
-  return <GPolyline path={coordinates.map(toLiteral)} strokeColor={strokeColor} strokeWeight={strokeWidth} strokeOpacity={0.9} />;
+export function Polyline({ coordinates, strokeColor, strokeWidth, zIndex }: PolylineProps) {
+  return (
+    <GPolyline
+      path={coordinates.map(toLiteral)}
+      strokeColor={strokeColor}
+      strokeWeight={strokeWidth}
+      strokeOpacity={1}
+      zIndex={zIndex}
+    />
+  );
 }
