@@ -9,7 +9,7 @@ import { TextField } from '@/components/auth/text-field';
 import { Button } from '@/components/ui/button';
 import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { startPhoneVerification } from '@/lib/auth';
+import { PHONE_TEST_MODE, startPhoneVerification } from '@/lib/auth';
 import { authErrorMessage } from '@/lib/auth-errors';
 import type { Country } from '@/lib/countries';
 import { setPendingPhone } from '@/lib/phone-flow';
@@ -109,6 +109,11 @@ export default function PhoneStep() {
       <Text style={[styles.hint, { color: theme.textSecondary }]}>
         Your number is only shown to riders in a ride you join, and only if this is on. Standard SMS rates may apply.
       </Text>
+      {PHONE_TEST_MODE && (
+        <Text style={[styles.hint, { color: theme.textSecondary }]}>
+          Test mode: no reCAPTCHA. Only Firebase test phone numbers work.
+        </Text>
+      )}
       {error && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
       <Pressable accessibilityRole="button" onPress={() => signOut()}>
         <Text style={[styles.link, { color: theme.textSecondary }]}>Sign out</Text>

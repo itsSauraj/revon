@@ -1,4 +1,5 @@
 import { db, get, push, ref, serverTimestamp, update } from './db';
+import { getActiveRide, stopTracking } from './location-task';
 
 import type {
   Member,
@@ -173,6 +174,34 @@ export function setLocked(rideId: string, uid: string, locked: boolean) {
     'meta/locked': locked,
     [`events/${push(ref(db, 'x')).key}`]: eventPayload(uid, 'locked', { locked }),
   });
+}
+
+/**
+ * The ride the signed-in rider is really still in, or null. Clears a stale saved ride: one from
+ * another account, one they've left or arrived at, or one that has ended or expired.
+ */
+export async function checkActiveRide(uid: string | null): Promise<string | null> {
+  const saved = await getActiveRide();
+  if (!saved) return null;
+  const clear = async () => {
+    await stopTracking({ keepContext: false }).catch(() => {});
+    return null;
+  };
+  if (!uid || saved.uid !== uid) return clear();
+  try {
+    const [memberSnap, metaSnap] = await Promise.all([
+      get(ref(db, `rides/${saved.rideId}/members/${uid}`)),
+      get(ref(db, `rides/${saved.rideId}/meta`)),
+    ]);
+    const member = memberSnap.val() as Member | null;
+    const meta = metaSnap.val() as RideMeta | null;
+    if (!member || member.status === 'left' || member.status === 'arrived') return clear();
+    if (!meta || meta.endedAt || Date.now() - meta.lastActivityAt > RIDE_EXPIRY_MS) return clear();
+    return saved.rideId;
+  } catch {
+    // Offline: keep showing the saved ride rather than losing it.
+    return saved.rideId;
+  }
 }
 
 export async function leaveRide(rideId: string, uid: string) {

@@ -1,0 +1,12 @@
+{
+  "name": "revon-backend",
+  "private": true,
+  "description": "Firebase rules and admin scripts for revon",
+  "scripts": {
+    "users:anonymous": "node scripts/delete-anonymous-users.js",
+    "users:anonymous:delete": "node scripts/delete-anonymous-users.js --confirm"
+  },
+  "devDependencies": {
+    "firebase-admin": "^14.5.0"
+  }
+}

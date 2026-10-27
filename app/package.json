@@ -82,8 +82,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "doctor": "expo-doctor",
-    "check": "npm run typecheck && npm run lint && npm run doctor",
-    "reset-project": "node ./scripts/reset-project.js"
+    "check": "npm run typecheck && npm run lint && npm run doctor"
   },
   "private": true
 }

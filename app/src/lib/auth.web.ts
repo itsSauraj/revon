@@ -97,7 +97,11 @@ function getVerifier() {
   return verifier;
 }
 
+/** Development only: skip reCAPTCHA (works with Firebase test phone numbers only). See auth.ts. */
+export const PHONE_TEST_MODE = __DEV__ && process.env.EXPO_PUBLIC_PHONE_TEST_MODE === '1';
+
 export async function startPhoneVerification(e164: string): Promise<PhoneVerification> {
+  if (PHONE_TEST_MODE) webAuth.settings.appVerificationDisabledForTesting = true;
   const user = webAuth.currentUser;
   if (!user) throw new Error('You are signed out. Sign in again.');
   let confirmation: ConfirmationResult;

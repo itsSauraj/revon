@@ -115,9 +115,17 @@ export type PhoneVerification = {
   confirm: (code: string) => Promise<void>;
 };
 
+/**
+ * Development only: skip Firebase's app check (Play Integrity / reCAPTCHA) so phone sign-in works
+ * without a challenge. Firebase only allows this for its *test* phone numbers
+ * (Authentication > Sign-in method > Phone > Phone numbers for testing); real numbers will fail.
+ */
+export const PHONE_TEST_MODE = __DEV__ && process.env.EXPO_PUBLIC_PHONE_TEST_MODE === '1';
+
 /** Sends an SMS code to `e164` and returns a handle to link the verified number to this account. */
 export async function startPhoneVerification(e164: string, forceResend = false): Promise<PhoneVerification> {
   const auth = getAuth();
+  if (PHONE_TEST_MODE) auth.settings.appVerificationDisabledForTesting = true;
   const snapshot = await verifyPhoneNumber(auth, e164, 60, forceResend);
   const verificationId = snapshot.verificationId;
   return {

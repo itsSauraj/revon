@@ -199,8 +199,17 @@ export async function stopTracking({ keepContext }: { keepContext: boolean }) {
 }
 
 export async function getActiveRideId(): Promise<string | null> {
-  const raw = await AsyncStorage.getItem(CTX_KEY);
-  return raw ? (JSON.parse(raw) as TrackingContext).rideId : null;
+  return (await getActiveRide())?.rideId ?? null;
+}
+
+/** The ride this phone was last tracking for (may be stale; see rides.checkActiveRide). */
+export async function getActiveRide(): Promise<TrackingContext | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CTX_KEY);
+    return raw ? (JSON.parse(raw) as TrackingContext) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function isTracking() {

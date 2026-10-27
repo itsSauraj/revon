@@ -49,8 +49,8 @@ over to check a chat app or call around.
 │   ├── src/app/      Screens (Expo Router, file-based routes)
 │   ├── src/components/
 │   ├── src/hooks/
-│   └── src/lib/      Firebase, rides, Google APIs, geo math, location task, alerts
-├── backend/          Firebase Realtime Database security rules + setup guide
+│   └── src/lib/      Auth, database, rides, Google APIs, validation, geo math, location task, alerts
+├── backend/          Firebase setup guide, database security rules, admin scripts
 ├── docs/             Product proposal
 └── product_assets/   Brand icons (Android, iOS, web)
 ```
@@ -69,73 +69,45 @@ over to check a chat app or call around.
 
 ## Getting started
 
-### Prerequisites
+Setup is split into two guides:
 
-- Node.js (current LTS) and npm
-- A Google Cloud project with **Maps SDK for Android**, **Maps SDK for iOS**, **Places API (New)**
-  and **Routes API** enabled
-- A Firebase project with **Anonymous** sign-in and a **Realtime Database**
-- For iOS builds: an Apple Developer account (builds run on EAS if you don't have a Mac)
+| Guide | Covers |
+|---|---|
+| [backend/README.md](backend/README.md) | Everything in the **Firebase console**: sign-in providers, SMS region policy, test phone numbers, Realtime Database, registering the Android/iOS/web apps (package name, SHA fingerprints, config files), Play Integrity, deploying the security rules, admin scripts |
+| [app/README.md](app/README.md) | Your **machine** and the **app**: requirements (Node, Android Studio, JDK 17), `.env.local`, Firebase config files, Google Maps Platform APIs and keys, running on a phone over USB / Wi-Fi / web / EAS, when to rebuild, scripts, troubleshooting |
 
-### 1. Install
+### Quick start
 
-```bash
-cd app
-npm install
-```
+1. Set up the Firebase project: [backend/README.md](backend/README.md).
+2. Install and configure the app:
+   ```bash
+   cd app
+   npm install
+   cp .env.example .env.local      # fill in the keys (see app/README.md)
+   # add app/google-services.json (and GoogleService-Info.plist for iOS)
+   ```
+3. Build and run on an Android phone connected by USB:
+   ```bash
+   npx expo prebuild --platform android
+   npm run android:dev -- --device <device>   # first time / after native changes
+   npm run start:usb                          # every day
+   ```
 
-### 2. Configure environment
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in `GOOGLE_MAPS_API_KEY` and the five `EXPO_PUBLIC_FIREBASE_*` values. Everything else in
-`.env.example` is optional and explained there.
-
-### 3. Set up Firebase
-
-Follow [backend/README.md](backend/README.md) to enable Anonymous Auth, create the database and
-deploy the security rules (run Firebase CLI commands from `backend/`).
-
-### 4. Run on a device
-
-revon uses native modules (maps, background location), so it needs a **development build**, not
-Expo Go.
-
-```bash
-# Android: local build (Android Studio / SDK installed) ...
-npx expo run:android
-# ... or a cloud build
-npx eas-cli@latest build --profile development --platform android
-
-# iOS: cloud build
-npx eas-cli@latest build --profile development --platform ios
-```
-
-Then start the dev server:
-
-```bash
-npx expo start
-```
-
-### Checks
-
-```bash
-npx tsc --noEmit     # typecheck
-npx expo lint        # lint
-npx expo-doctor      # dependency / config health
-```
+Expo Go isn't supported: revon needs its own development build (native Firebase, Google Sign-In,
+maps, background location).
 
 ## Testing a group ride
 
 You need two devices, or one device and an emulator with mock locations.
 
+Each device needs its own revon account (Firebase test phone numbers make this quick).
+
 1. Device A: search for a destination, tap **Start Group Ride**, and share the invite.
 2. Device B: open the link, or use **Join a ride** and enter the code.
 3. Move one device (or play a GPX route in the emulator) and watch its marker on the other.
 4. Leave the route, reach the destination, or hold **SOS** to check each alert.
-5. Tap **Navigate** to open Google Maps, and confirm the other device still gets updates.
+5. Tap **Navigate** to open the in-app ride view, or open Google Maps from the directions list, and
+   confirm the other device still gets updates.
 
 ## Known limitations (POC)
 
@@ -149,9 +121,13 @@ You need two devices, or one device and an emulator with mock locations.
   hand-off to Google Maps for voice guidance.
 - Liquid glass is native on iOS 26+; Android shows translucent panels (no blur over the native map) and
   web uses a CSS backdrop blur.
+- The phone verification SMS uses Firebase's fixed template; its text can't be customised.
+
+## Roadmap
+
 - Push notifications via Cloud Functions + FCM (SOS reaches every rider, even with the app closed)
 - https invite links (Android App Links / iOS Universal Links)
-- Google Sign-In and ride history
+- Ride history
 - Spoken in-app turn-by-turn via the Google Navigation SDK, and group push-to-talk
 - Store release: background location declarations, per-platform restricted API keys
 

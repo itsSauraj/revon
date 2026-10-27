@@ -39,7 +39,11 @@ export function authErrorCode(e: unknown): string | null {
 
 export function authErrorMessage(e: unknown): string {
   const code = authErrorCode(e);
+  const raw = e instanceof Error ? e.message : String(e);
+  // Firebase blocks SMS to countries that aren't allowed in Authentication > Settings > SMS region policy.
+  if (/region enabled|SMS unable to be sent/i.test(raw)) {
+    return "SMS verification isn't enabled for this country yet. Try again later or use another number.";
+  }
   if (code && MESSAGES[code]) return MESSAGES[code];
-  const message = e instanceof Error ? e.message : String(e);
-  return message.replace(/^\[?auth\/[a-z-]+\]?\s*/i, '') || 'Something went wrong. Try again.';
+  return raw.replace(/^\[?auth\/[a-z-]+\]?\s*/i, '') || 'Something went wrong. Try again.';
 }

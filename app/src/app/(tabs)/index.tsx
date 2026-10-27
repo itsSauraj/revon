@@ -47,8 +47,8 @@ import {
   type Route,
   type Suggestion,
 } from '@/lib/google';
-import { getActiveRideId, startTracking } from '@/lib/location-task';
-import { createRide } from '@/lib/rides';
+import { startTracking } from '@/lib/location-task';
+import { checkActiveRide, createRide } from '@/lib/rides';
 import { useSession } from '@/lib/session';
 import type { Place } from '@/lib/types';
 
@@ -81,8 +81,9 @@ export default function MapHome() {
 
   useFocusEffect(
     useCallback(() => {
-      getActiveRideId().then(setActiveRide);
-    }, []),
+      // Only offer "Back to my ride" for a ride this rider is really still in.
+      checkActiveRide(uid).then(setActiveRide).catch(() => setActiveRide(null));
+    }, [uid]),
   );
 
   // Locate the rider once and centre the map on them.
