@@ -99,13 +99,28 @@ function LayersController({ layers }: { layers: MapLayers }) {
 
 function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?: EdgePadding }) {
   const map = useMap();
+  // The screen may ask for the camera before the Google map instance exists (e.g. centring on the
+  // rider as soon as a fix arrives). Keep the latest request and apply it once the map is ready.
+  const pending = useRef<((m: google.maps.Map) => void) | null>(null);
+  useEffect(() => {
+    if (!map || !pending.current) return;
+    const fn = pending.current;
+    pending.current = null;
+    fn(map);
+  }, [map]);
+  const run = (fn: (m: google.maps.Map) => void) => {
+    if (map) fn(map);
+    else pending.current = fn;
+  };
+
   useImperativeHandle(
     handle,
     () => ({
       animateToRegion(region) {
-        if (!map) return;
-        map.panTo(toLiteral(region));
-        map.setZoom(zoomFor(region.latitudeDelta));
+        run((m) => {
+          m.panTo(toLiteral(region));
+          m.setZoom(zoomFor(region.latitudeDelta));
+        });
       },
       getCamera() {
         const c = map?.getCenter();
@@ -117,27 +132,31 @@ function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?:
         });
       },
       animateCamera(camera) {
-        if (!map) return;
-        // Heading and tilt need vector rendering; raster maps ignore them.
-        map.moveCamera({
-          ...(camera.center ? { center: toLiteral(camera.center) } : {}),
-          ...(camera.heading != null ? { heading: camera.heading } : {}),
-          ...(camera.pitch != null ? { tilt: camera.pitch } : {}),
-          ...(camera.zoom != null ? { zoom: camera.zoom } : {}),
+        run((m) => {
+          // Heading and tilt need vector rendering; raster maps ignore them.
+          m.moveCamera({
+            ...(camera.center ? { center: toLiteral(camera.center) } : {}),
+            ...(camera.heading != null ? { heading: camera.heading } : {}),
+            ...(camera.pitch != null ? { tilt: camera.pitch } : {}),
+            ...(camera.zoom != null ? { zoom: camera.zoom } : {}),
+          });
         });
       },
       fitToCoordinates(coordinates = [], options) {
-        if (!map || !coordinates.length) return;
-        if (coordinates.length === 1) {
-          map.panTo(toLiteral(coordinates[0]));
-          map.setZoom(15);
-          return;
-        }
-        const bounds = new google.maps.LatLngBounds();
-        coordinates.forEach((c) => bounds.extend(toLiteral(c)));
-        map.fitBounds(bounds, options?.edgePadding ?? padding ?? 40);
+        if (!coordinates.length) return;
+        run((m) => {
+          if (coordinates.length === 1) {
+            m.panTo(toLiteral(coordinates[0]));
+            m.setZoom(15);
+            return;
+          }
+          const bounds = new google.maps.LatLngBounds();
+          coordinates.forEach((c) => bounds.extend(toLiteral(c)));
+          m.fitBounds(bounds, options?.edgePadding ?? padding ?? 40);
+        });
       },
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [map, padding],
   );
   return null;
@@ -178,6 +197,35 @@ export function MapView({
   const [openId, setOpenId] = useState<string | null>(null);
   const dark = useColorScheme() === 'dark';
   const layers = useMapLayers();
+
+  // The camera controller only exists once the Maps API has loaded, but screens ask for the camera
+  // as soon as a GPS fix arrives. Hold the controller here and queue calls made before it exists.
+  const controller = useRef<MapRef | null>(null);
+  const queued = useRef<((c: MapRef) => void)[]>([]);
+  const setController = (c: MapRef | null) => {
+    controller.current = c;
+    if (!c) return;
+    const calls = queued.current;
+    queued.current = [];
+    calls.forEach((fn) => fn(c));
+  };
+  const forward = (fn: (c: MapRef) => void) => {
+    if (controller.current) fn(controller.current);
+    else queued.current.push(fn);
+  };
+  useImperativeHandle(
+    ref,
+    () => ({
+      animateToRegion: (region, duration) => forward((c) => c.animateToRegion(region, duration)),
+      animateCamera: (camera, opts) => forward((c) => c.animateCamera(camera, opts)),
+      fitToCoordinates: (coords, opts) => forward((c) => c.fitToCoordinates(coords, opts)),
+      getCamera: () =>
+        controller.current
+          ? controller.current.getCamera()
+          : Promise.resolve({ center: { latitude: 0, longitude: 0 }, heading: 0, pitch: 0, zoom: 0 }),
+    }),
+    [],
+  );
 
   // Keep the latest callback without re-subscribing to geolocation on every render.
   const onUserLocationRef = useRef(onUserLocationChange);
@@ -224,7 +272,7 @@ export function MapView({
             const p = e.detail.latLng;
             if (p) onLongPress?.({ nativeEvent: { coordinate: { latitude: p.lat, longitude: p.lng } } });
           }}>
-          <CameraController handle={ref} padding={mapPadding} />
+          <CameraController handle={setController} padding={mapPadding} />
           <LayersController layers={layers} />
           {showsUserLocation && me && (
             <AdvancedMarker position={toLiteral(me)} zIndex={50} anchorLeft="-50%" anchorTop="-50%" clickable={false}>

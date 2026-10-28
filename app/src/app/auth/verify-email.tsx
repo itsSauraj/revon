@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { LuMailCheck } from 'react-icons/lu';
+import Animated from 'react-native-reanimated';
 
 import { AuthScreen } from '@/components/auth/auth-screen';
+import { FADE_IN } from '@/components/auth/field-motion';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Size, Type } from '@/constants/theme';
+import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { resendVerificationEmail } from '@/lib/auth';
 import { authErrorMessage } from '@/lib/auth-errors';
@@ -65,6 +67,7 @@ export default function VerifyEmail() {
       footer={
         <>
           <Button label="I've verified my email" variant="accent" loading={checking} onPress={check} />
+          {/* The countdown is a plain label: it changes every second, so it must not animate. */}
           <Button
             label={cooldown > 0 ? `Resend email in ${cooldown}s` : 'Resend email'}
             disabled={cooldown > 0}
@@ -74,26 +77,26 @@ export default function VerifyEmail() {
       }>
       <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
         <Icon icon={LuMailCheck} size={22} />
-        <Text style={[styles.cardText, { color: theme.text }]}>
+        <Text style={[TextStyles.body, styles.cardText, { color: theme.text }]}>
           The link expires after a while. If you can&apos;t find the email, check spam or resend it.
         </Text>
       </View>
       {Platform.OS !== 'web' && (
-        <Pressable accessibilityRole="button" onPress={() => Linking.openURL('mailto:')}>
-          <Text style={[styles.link, { color: theme.text }]}>Open mail app</Text>
-        </Pressable>
+        <Button label="Open mail app" variant="ghost" size="sm" style={styles.link} onPress={() => Linking.openURL('mailto:')} />
       )}
-      {message && <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>}
-      <Pressable accessibilityRole="button" onPress={() => signOut()}>
-        <Text style={[styles.link, { color: theme.textSecondary }]}>Use a different account</Text>
-      </Pressable>
+      {message && (
+        // Keyed on the text so a new message fades in rather than swapping under the eye.
+        <Animated.Text key={message} entering={FADE_IN} style={[TextStyles.small, { color: theme.textSecondary }]}>
+          {message}
+        </Animated.Text>
+      )}
+      <Button label="Use a different account" variant="ghost" size="sm" style={styles.link} onPress={() => signOut()} />
     </AuthScreen>
   );
 }
 
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: Size.radius, alignItems: 'flex-start' },
-  cardText: { flex: 1, fontSize: Type.small + 1, lineHeight: 20 },
-  link: { fontSize: Type.small, fontWeight: '700', textDecorationLine: 'underline' },
-  message: { fontSize: Type.small },
+  cardText: { flex: 1 },
+  link: { alignSelf: 'flex-start', paddingHorizontal: 0 },
 });

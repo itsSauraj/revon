@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Keyboard, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   LuLayers,
   LuLocateFixed,
@@ -15,8 +15,10 @@ import {
   LuUsers,
   LuX,
 } from 'react-icons/lu';
+import Animated, { Keyframe, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FADE_IN, FADE_OUT } from '@/components/auth/field-motion';
 import { LayersSheet } from '@/components/map/layers-sheet';
 import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
@@ -31,7 +33,8 @@ import { CompassButton, isRotated } from '@/components/ui/compass-button';
 import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
-import { Size, Type } from '@/constants/theme';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { noWebOutline, Size, TextStyles } from '@/constants/theme';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,11 +51,28 @@ import {
   type Suggestion,
 } from '@/lib/google';
 import { startTracking } from '@/lib/location-task';
+import { EASE_OUT, haptic, Timing } from '@/lib/motion';
 import { checkActiveRide, createRide } from '@/lib/rides';
 import { useSession } from '@/lib/session';
 import type { Place } from '@/lib/types';
 
 const FALLBACK_REGION = { latitude: 20, longitude: 0, latitudeDelta: 60, longitudeDelta: 60 };
+
+const RISE = 16;
+// The destination card is anchored to the bottom edge: it arrives from there and leaves the same way.
+// Opacity rides along, so under Reduce Motion (builders skip to the end) the change still reads.
+const CARD_IN = new Keyframe({
+  from: { opacity: 0, transform: [{ translateY: RISE }] },
+  to: { opacity: 1, transform: [{ translateY: 0 }], easing: EASE_OUT },
+})
+  .duration(Timing.enter.duration)
+  .reduceMotion(ReduceMotion.System);
+const CARD_OUT = new Keyframe({
+  from: { opacity: 1, transform: [{ translateY: 0 }] },
+  to: { opacity: 0, transform: [{ translateY: RISE }], easing: EASE_OUT },
+})
+  .duration(Timing.exit.duration)
+  .reduceMotion(ReduceMotion.System);
 
 export default function MapHome() {
   const theme = useTheme();
@@ -174,6 +194,8 @@ export default function MapHome() {
         route: route ?? null,
         avoid,
       });
+      // The ride exists: one light tap as the screen hands over to it.
+      haptic.light();
       await startTracking({ rideId, uid, polyline: route?.polyline ?? null, destination });
       clear();
       router.push({ pathname: '/ride/[id]', params: { id: rideId, invite: '1' } });
@@ -239,7 +261,10 @@ export default function MapHome() {
             offRoute={nav.offRoute}
             arrived={nav.arrived}
             onSteps={() => setShowSteps(true)}
-            onExit={nav.stop}
+            onExit={() => {
+              setShowSteps(false);
+              nav.stop();
+            }}
             onHeight={setNavH}
           />
           {/* Top right, just under the next-turn card. */}
@@ -264,13 +289,6 @@ export default function MapHome() {
             {!nav.following && <RecenterButton onPress={nav.recenter} />}
             <TripCard from={nav.origin} toName={nav.target.name} toAddress={nav.target.address} />
           </View>
-          {showSteps && (
-            <StepsSheet
-              steps={nav.route?.steps ?? []}
-              onClose={() => setShowSteps(false)}
-              onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
-            />
-          )}
         </>
       )}
 
@@ -295,38 +313,51 @@ export default function MapHome() {
                 <IconButton icon={LuX} variant="ghost" size={28} accessibilityLabel="Clear search" onPress={clear} />
               )}
             </Glass>
+            {/* The list fades in as one; rows are never animated individually. */}
             {visibleSuggestions.length > 0 && (
-              <FlatList
-                data={visibleSuggestions}
-                keyExtractor={(s) => s.placeId}
-                keyboardShouldPersistTaps="handled"
-                style={[styles.suggestions, { backgroundColor: theme.surface }]}
-                renderItem={({ item }) => (
-                  <Pressable onPress={() => choose(item)} style={[styles.suggestion, { borderBottomColor: theme.border }]}>
-                    <Icon icon={LuMapPin} size={Size.iconSm} color={theme.textSecondary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.sMain, { color: theme.text }]} numberOfLines={1}>
-                        {item.main}
-                      </Text>
-                      {!!item.secondary && (
-                        <Text style={[styles.sSecondary, { color: theme.textSecondary }]} numberOfLines={1}>
-                          {item.secondary}
+              <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={[styles.suggestions, { backgroundColor: theme.surface }]}>
+                <FlatList
+                  data={visibleSuggestions}
+                  keyExtractor={(s) => s.placeId}
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.suggestionList}
+                  renderItem={({ item }) => (
+                    <PressableScale
+                      accessibilityLabel={item.secondary ? `${item.main}, ${item.secondary}` : item.main}
+                      onPress={() => choose(item)}
+                      style={[styles.suggestion, { borderBottomColor: theme.border }]}>
+                      <Icon icon={LuMapPin} size={Size.iconSm} color={theme.textSecondary} />
+                      <View style={styles.flex}>
+                        <Text style={[TextStyles.label, { color: theme.text }]} numberOfLines={1}>
+                          {item.main}
                         </Text>
-                      )}
-                    </View>
-                  </Pressable>
-                )}
-              />
+                        {!!item.secondary && (
+                          <Text style={[TextStyles.small, { color: theme.textSecondary }]} numberOfLines={1}>
+                            {item.secondary}
+                          </Text>
+                        )}
+                      </View>
+                    </PressableScale>
+                  )}
+                />
+              </Animated.View>
             )}
             {sessionError && (
-              <Text style={[styles.error, { backgroundColor: theme.inverse, color: theme.onInverse }]}>{sessionError}</Text>
+              <Animated.Text
+                entering={FADE_IN}
+                style={[TextStyles.small, styles.error, { backgroundColor: theme.inverse, color: theme.onInverse }]}>
+                {sessionError}
+              </Animated.Text>
             )}
           </View>
 
-          {/* Top right, under the search bar, so the bottom card and pills never cover it. Hidden while
-              suggestions are open. */}
+          {/* Top right, under the search bar, so the bottom card and pills never cover it. Fades out
+              while suggestions are open. */}
           {visibleSuggestions.length === 0 && (
-            <View style={[styles.mapButtons, { top: insets.top + 8 + Size.control + 10 }]}>
+            <Animated.View
+              entering={FADE_IN}
+              exiting={FADE_OUT}
+              style={[styles.mapButtons, { top: insets.top + 8 + Size.control + 10 }]}>
               <IconButton
                 icon={LuLayers}
                 variant="map"
@@ -342,51 +373,53 @@ export default function MapHome() {
                 onPress={() => centerOn(map, me)}
               />
               {isRotated(compass.heading) && <CompassButton heading={compass.heading} onPress={compass.resetNorth} />}
-            </View>
+            </Animated.View>
           )}
 
           {destination ? (
-            <Glass style={styles.card}>
-              <Text style={[styles.destName, { color: theme.text }]} numberOfLines={1}>
-                {destination.name}
-              </Text>
-              {!!destination.address && (
-                <Text style={[styles.destAddr, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {destination.address}
+            <Animated.View key="destination" entering={CARD_IN} exiting={CARD_OUT} style={styles.cardWrap} pointerEvents="box-none">
+              <Glass style={styles.card}>
+                <Text style={[TextStyles.title, { color: theme.text }]} numberOfLines={1}>
+                  {destination.name}
                 </Text>
-              )}
-              <Text style={[styles.routeLine, { color: theme.text }]}>
-                {routing
-                  ? 'Finding a route…'
-                  : route
-                    ? `${formatDuration(route.durationS)} · ${formatDistance(route.distanceM)}`
-                    : me
-                      ? 'No route found'
-                      : 'Waiting for your location…'}
-              </Text>
-              <View style={styles.avoidRow}>
-                <Chip
-                  label="Avoid highways"
-                  selected={avoid.highways}
-                  onPress={() => setAvoid((a) => ({ ...a, highways: !a.highways }))}
-                />
-                <Chip label="Avoid tolls" selected={avoid.tolls} onPress={() => setAvoid((a) => ({ ...a, tolls: !a.tolls }))} />
-              </View>
-              <View style={styles.buttons}>
-                <Button label="Navigate" icon={LuNavigation} onPress={() => nav.start(destination)} style={styles.flex} />
-                <Button
-                  label="Start group ride"
-                  icon={LuUsers}
-                  variant="accent"
-                  loading={starting}
-                  disabled={!uid}
-                  onPress={startGroupRide}
-                  style={styles.flex}
-                />
-              </View>
-            </Glass>
+                {!!destination.address && (
+                  <Text style={[TextStyles.small, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {destination.address}
+                  </Text>
+                )}
+                <Text style={[TextStyles.label, styles.routeLine, { color: theme.text }]}>
+                  {routing
+                    ? 'Finding a route…'
+                    : route
+                      ? `${formatDuration(route.durationS)} · ${formatDistance(route.distanceM)}`
+                      : me
+                        ? 'No route found'
+                        : 'Waiting for your location…'}
+                </Text>
+                <View style={styles.avoidRow}>
+                  <Chip
+                    label="Avoid highways"
+                    selected={avoid.highways}
+                    onPress={() => setAvoid((a) => ({ ...a, highways: !a.highways }))}
+                  />
+                  <Chip label="Avoid tolls" selected={avoid.tolls} onPress={() => setAvoid((a) => ({ ...a, tolls: !a.tolls }))} />
+                </View>
+                <View style={styles.buttons}>
+                  <Button label="Navigate" icon={LuNavigation} onPress={() => nav.start(destination)} style={styles.flex} />
+                  <Button
+                    label="Start group ride"
+                    icon={LuUsers}
+                    variant="accent"
+                    loading={starting}
+                    disabled={!uid}
+                    onPress={startGroupRide}
+                    style={styles.flex}
+                  />
+                </View>
+              </Glass>
+            </Animated.View>
           ) : (
-            <View style={styles.bottomPills}>
+            <Animated.View key="pills" entering={FADE_IN} exiting={FADE_OUT} style={styles.bottomPills} pointerEvents="box-none">
               {activeRide && (
                 <Button
                   label="Back to my ride"
@@ -403,12 +436,19 @@ export default function MapHome() {
                 onPress={() => router.push('/join')}
                 style={styles.glassShadow}
               />
-            </View>
+            </Animated.View>
           )}
         </>
       )}
 
-      {showLayers && <LayersSheet onClose={() => setShowLayers(false)} />}
+      {/* Modal sheets stay mounted and paint over everything else. */}
+      <StepsSheet
+        visible={showSteps && nav.active}
+        steps={nav.route?.steps ?? []}
+        onDismiss={() => setShowSteps(false)}
+        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+      />
+      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
     </View>
   );
 }
@@ -446,8 +486,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...glassShadow,
   },
-  searchInput: { flex: 1, fontSize: Type.body, height: '100%' },
-  suggestions: { marginTop: 6, borderRadius: Size.radius, maxHeight: 300, ...shadow },
+  searchInput: { flex: 1, fontSize: TextStyles.body.fontSize, height: '100%', ...noWebOutline },
+  suggestions: { marginTop: 6, borderRadius: Size.radius, ...shadow },
+  suggestionList: { maxHeight: 300 },
   suggestion: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -456,14 +497,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sMain: { fontSize: Type.small + 1, fontWeight: '600' },
-  sSecondary: { fontSize: Type.tiny + 1, marginTop: 1 },
-  error: { marginTop: 6, padding: 8, borderRadius: Size.radius, overflow: 'hidden', fontSize: Type.small },
+  error: { marginTop: 6, padding: 8, borderRadius: Size.radius, overflow: 'hidden' },
+  cardWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   card: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     padding: 16,
     paddingBottom: 20,
     borderTopLeftRadius: Size.radiusLg + 4,
@@ -472,9 +508,7 @@ const styles = StyleSheet.create({
     gap: 4,
     ...glassShadow,
   },
-  destName: { fontSize: Type.title, fontWeight: '700' },
-  destAddr: { fontSize: Type.small - 1 },
-  routeLine: { fontSize: Type.small + 1, fontWeight: '600', marginTop: 4 },
+  routeLine: { marginTop: 4 },
   avoidRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 12 },
   mapButtons: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' },

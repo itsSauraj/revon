@@ -4,7 +4,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { LuUserPlus } from 'react-icons/lu';
 
 import { Button } from '@/components/ui/button';
-import { Size, Type } from '@/constants/theme';
+import { noWebOutline, Size, TextStyles } from '@/constants/theme';
 
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeCode } from '@/lib/rides';
@@ -16,7 +16,7 @@ export default function JoinWithCode() {
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>
+      <Text style={[TextStyles.small, { color: theme.textSecondary }]}>
         Enter the 6-character code from your group&apos;s invite.
       </Text>
       <TextInput
@@ -43,7 +43,6 @@ export default function JoinWithCode() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: 20, gap: 12 },
-  label: { fontSize: Type.small + 1 },
   input: {
     height: 56,
     borderRadius: Size.radius,
@@ -52,5 +51,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 6,
     textAlign: 'center',
+    ...noWebOutline,
   },
 });

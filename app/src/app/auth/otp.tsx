@@ -1,14 +1,17 @@
 import { Redirect, router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { AuthScreen } from '@/components/auth/auth-screen';
+import { FADE_IN } from '@/components/auth/field-motion';
 import { OtpInput } from '@/components/auth/otp-input';
 import { Button } from '@/components/ui/button';
-import { Type } from '@/constants/theme';
+import { TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { startPhoneVerification } from '@/lib/auth';
 import { authErrorMessage } from '@/lib/auth-errors';
+import { haptic } from '@/lib/motion';
 import { getPendingPhone, setPendingPhone } from '@/lib/phone-flow';
 import { refreshUser, saveProfile } from '@/lib/session';
 import { OTP_LENGTH, validateOtp } from '@/lib/validation';
@@ -21,6 +24,8 @@ export default function VerifyOtp() {
   const [code, setCode] = useState(pending?.verification.autoCode ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Wrong codes so far: each one shakes the boxes once, with the error haptic.
+  const [attempt, setAttempt] = useState(0);
   const [cooldown, setCooldown] = useState(RESEND_AFTER_S);
   const submitted = useRef<string | null>(null);
 
@@ -32,9 +37,14 @@ export default function VerifyOtp() {
   const verify = useCallback(
     async (value: string) => {
       if (!pending) return;
+      const fail = (message: string) => {
+        setError(message);
+        setAttempt((a) => a + 1);
+        haptic.error();
+      };
       const invalid = validateOtp(value);
       if (invalid) {
-        setError(invalid);
+        fail(invalid);
         return;
       }
       submitted.current = value;
@@ -42,12 +52,14 @@ export default function VerifyOtp() {
       setError(null);
       try {
         await pending.verification.confirm(value);
-        // Phone is now linked to the account: save the profile, then the session opens the app.
+        // Phone is now linked to the account: the session moves on as soon as the user is re-read,
+        // so the success tick lands on the same frame as the screen change.
         await refreshUser();
+        haptic.success();
         await saveProfile({ name: pending.name, sharePhone: pending.sharePhone });
         setPendingPhone(null);
       } catch (e) {
-        setError(authErrorMessage(e));
+        fail(authErrorMessage(e));
         submitted.current = null;
       } finally {
         setBusy(false);
@@ -87,6 +99,7 @@ export default function VerifyOtp() {
       footer={
         <>
           <Button label="Verify" variant="accent" loading={busy} disabled={busy || code.length < OTP_LENGTH} onPress={() => verify(code)} />
+          {/* The countdown changes every second: a plain label, never animated. */}
           <Button
             label={cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
             disabled={cooldown > 0 || busy}
@@ -94,16 +107,17 @@ export default function VerifyOtp() {
           />
         </>
       }>
-      <OtpInput value={code} onChange={setCode} error={Boolean(error)} autoFocus />
-      {error && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
-      <Pressable accessibilityRole="button" onPress={() => router.back()}>
-        <Text style={[styles.link, { color: theme.text }]}>Change number</Text>
-      </Pressable>
+      <OtpInput value={code} onChange={setCode} error={Boolean(error)} shakeKey={attempt} autoFocus />
+      {error && (
+        <Animated.Text entering={FADE_IN} style={[TextStyles.small, { color: theme.danger }]}>
+          {error}
+        </Animated.Text>
+      )}
+      <Button label="Change number" variant="ghost" size="sm" style={styles.link} onPress={() => router.back()} />
     </AuthScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  error: { fontSize: Type.small },
-  link: { fontSize: Type.small, fontWeight: '700', textDecorationLine: 'underline' },
+  link: { alignSelf: 'flex-start', paddingHorizontal: 0 },
 });

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import { StyleSheet, type ViewStyle } from 'react-native';
 import type { IconType } from 'react-icons';
 
 import { Size } from '@/constants/theme';
@@ -6,6 +6,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 import { Glass } from './glass';
 import { Icon } from './icon';
+import { hitSlopFor, PressableScale } from './pressable-scale';
 
 type Props = {
   icon: IconType;
@@ -41,20 +42,19 @@ export function IconButton({
 
   const glass = variant === 'map';
   return (
-    <Pressable
-      accessibilityRole="button"
+    <PressableScale
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [
+      hitSlop={hitSlopFor(size)}
+      style={[
         styles.btn,
         floating && (glass ? styles.floatingGlass : styles.floating),
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: palette.bg, opacity: pressed ? 0.75 : 1 },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: palette.bg },
         style,
       ]}>
       {glass && <Glass interactive style={[StyleSheet.absoluteFill, { borderRadius: size / 2 }]} />}
       <Icon icon={icon} size={Math.round(size * 0.42)} color={palette.fg} />
-    </Pressable>
+    </PressableScale>
   );
 }
 

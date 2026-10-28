@@ -1,16 +1,21 @@
 /**
  * Animated illustrations for the welcome intro. Each scene is a small "map" (roads, river, blocks)
  * with revon's markers animated on top, in the app's monochrome + accent style.
+ *
+ * Every loop is gated on `useReducedMotion()`: with reduced motion on, nothing loops and each piece
+ * sits on its end frame (route drawn, pins down, tags shown). Curves and springs come from lib/motion.
  */
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LuCoffee, LuCornerUpRight, LuFuel, LuNavigation2, LuSiren, LuUsers } from 'react-icons/lu';
 import Animated, {
-  Easing,
+  cancelAnimation,
   interpolate,
+  ReduceMotion,
   type SharedValue,
   useAnimatedProps,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -23,10 +28,15 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { Icon } from '@/components/ui/icon';
 import { Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { EASE_IN_OUT, EASE_OUT, Spring, Timing } from '@/lib/motion';
 
 import { Motorbike } from './motorbike';
 
 export const SCENE = 280;
+
+// The loops below never start under reduced motion (see the file comment), so the configs inside
+// them must not short-circuit on their own: a live toggle would otherwise turn a loop into a blink.
+const LOOP = { reduceMotion: ReduceMotion.Never } as const;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -65,15 +75,26 @@ function pointAt(t: number) {
 /** Roads, river and blocks: the backdrop every scene shares. */
 function MapBackdrop({ withRoute = true, drawRoute = false }: { withRoute?: boolean; drawRoute?: boolean }) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const dash = useSharedValue(ROUTE_LEN);
   useEffect(() => {
     if (!drawRoute) return;
-    dash.value = withRepeat(
-      withSequence(withTiming(0, { duration: 1800, easing: Easing.out(Easing.cubic) }), withDelay(1600, withTiming(0, { duration: 1 }))),
-      -1,
+    if (reduced) {
+      dash.set(0); // route fully drawn
+      return;
+    }
+    dash.set(
+      withRepeat(
+        withSequence(
+          withTiming(0, { duration: 1800, easing: EASE_OUT, ...LOOP }),
+          withDelay(1600, withTiming(0, { duration: 1, ...LOOP })),
+        ),
+        -1,
+      ),
     );
-  }, [drawRoute, dash]);
-  const routeProps = useAnimatedProps(() => ({ strokeDashoffset: drawRoute ? dash.value : 0 }));
+    return () => cancelAnimation(dash);
+  }, [drawRoute, reduced, dash]);
+  const routeProps = useAnimatedProps(() => ({ strokeDashoffset: drawRoute ? dash.get() : 0 }));
 
   return (
     <Svg width={SCENE} height={SCENE} viewBox={`0 0 ${SCENE} ${SCENE}`} style={StyleSheet.absoluteFill}>
@@ -118,17 +139,32 @@ function MapBackdrop({ withRoute = true, drawRoute = false }: { withRoute?: bool
 
 function Pin({ x, y, label, me, delay = 0 }: { x: number; y: number; label: string; me?: boolean; delay?: number }) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const drop = useSharedValue(0);
   useEffect(() => {
-    drop.value = withRepeat(
-      withSequence(withDelay(delay, withSpring(1, { damping: 9, stiffness: 140 })), withDelay(2600, withTiming(0, { duration: 200 }))),
-      -1,
+    if (reduced) {
+      drop.set(1); // pin down
+      return;
+    }
+    // The pin lands with a little bounce: it fell, so the spring carries momentum.
+    drop.set(
+      withRepeat(
+        withSequence(
+          withDelay(delay, withSpring(1, { ...Spring.momentum(), ...LOOP })),
+          withDelay(2600, withTiming(0, { ...Timing.exit, ...LOOP })),
+        ),
+        -1,
+      ),
     );
-  }, [delay, drop]);
-  const style = useAnimatedStyle(() => ({
-    opacity: drop.value,
-    transform: [{ translateY: interpolate(drop.value, [0, 1], [-30, 0]) }, { scale: interpolate(drop.value, [0, 1], [0.6, 1]) }],
-  }));
+    return () => cancelAnimation(drop);
+  }, [delay, reduced, drop]);
+  const style = useAnimatedStyle(() => {
+    const d = drop.get();
+    return {
+      opacity: d,
+      transform: [{ translateY: interpolate(d, [0, 1], [-30, 0]) }, { scale: interpolate(d, [0, 1], [0.6, 1]) }],
+    };
+  });
   return (
     <Animated.View style={[styles.pin, { left: x - 15, top: y - 15 }, style]}>
       <View style={[styles.dot, { backgroundColor: me ? theme.me : theme.rider, borderColor: theme.markerBorder }]}>
@@ -139,29 +175,55 @@ function Pin({ x, y, label, me, delay = 0 }: { x: number; y: number; label: stri
 }
 
 function Pulse({ x, y, color, size = 56, delay = 0 }: { x: number; y: number; color: string; size?: number; delay?: number }) {
+  const reduced = useReducedMotion();
   const p = useSharedValue(0);
   useEffect(() => {
-    p.value = withDelay(delay, withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1));
-  }, [delay, p]);
-  const style = useAnimatedStyle(() => ({
-    opacity: interpolate(p.value, [0, 1], [0.55, 0]),
-    transform: [{ scale: interpolate(p.value, [0, 1], [0.4, 1.6]) }],
-  }));
+    if (reduced) {
+      p.set(0.5); // a still, faint halo
+      return;
+    }
+    p.set(withDelay(delay, withRepeat(withTiming(1, { duration: 1600, easing: EASE_OUT, ...LOOP }), -1)));
+    return () => cancelAnimation(p);
+  }, [delay, reduced, p]);
+  const style = useAnimatedStyle(() => {
+    const v = p.get();
+    return { opacity: interpolate(v, [0, 1], [0.55, 0]), transform: [{ scale: interpolate(v, [0, 1], [0.4, 1.6]) }] };
+  });
   return (
     <Animated.View
       pointerEvents="none"
-      style={[{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, style]}
+      style={[
+        { position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, borderRadius: size / 2, backgroundColor: color },
+        style,
+      ]}
     />
   );
 }
 
 function Tag({ x, y, icon, text, delay }: { x: number; y: number; icon: typeof LuFuel; text: string; delay: number }) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const a = useSharedValue(0);
   useEffect(() => {
-    a.value = withRepeat(withSequence(withDelay(delay, withTiming(1, { duration: 400 })), withDelay(2200, withTiming(0, { duration: 300 }))), -1);
-  }, [a, delay]);
-  const style = useAnimatedStyle(() => ({ opacity: a.value, transform: [{ translateY: interpolate(a.value, [0, 1], [6, 0]) }] }));
+    if (reduced) {
+      a.set(1); // tag shown
+      return;
+    }
+    a.set(
+      withRepeat(
+        withSequence(
+          withDelay(delay, withTiming(1, { ...Timing.enter, ...LOOP })),
+          withDelay(2200, withTiming(0, { ...Timing.exit, ...LOOP })),
+        ),
+        -1,
+      ),
+    );
+    return () => cancelAnimation(a);
+  }, [a, delay, reduced]);
+  const style = useAnimatedStyle(() => {
+    const v = a.get();
+    return { opacity: v, transform: [{ translateY: interpolate(v, [0, 1], [6, 0]) }] };
+  });
   return (
     <Animated.View style={[styles.tag, { left: x, top: y, backgroundColor: theme.rider }, style]}>
       <Icon icon={icon} size={11} color={theme.riderInk} />
@@ -174,8 +236,9 @@ function Tag({ x, y, icon, text, delay }: { x: number; y: number; icon: typeof L
 function Follower({ t, lag }: { t: SharedValue<number>; lag: number }) {
   const theme = useTheme();
   const style = useAnimatedStyle(() => {
-    const p = pointAt(t.value - lag);
-    return { opacity: t.value - lag > 0 ? 1 : 0, transform: [{ translateX: p.x - 9 }, { translateY: p.y - 9 }] };
+    const progress = t.get() - lag;
+    const p = pointAt(progress);
+    return { opacity: progress > 0 ? 1 : 0, transform: [{ translateX: p.x - 9 }, { translateY: p.y - 9 }] };
   });
   return <Animated.View style={[styles.follower, { backgroundColor: theme.rider, borderColor: theme.markerBorder }, style]} />;
 }
@@ -183,12 +246,23 @@ function Follower({ t, lag }: { t: SharedValue<number>; lag: number }) {
 /** 1. The convoy: a motorbike leads riders along the route as it draws in. */
 export function ConvoyScene() {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const t = useSharedValue(0);
   useEffect(() => {
-    t.value = withRepeat(withSequence(withTiming(1, { duration: 3400, easing: Easing.inOut(Easing.quad) }), withTiming(0, { duration: 0 })), -1);
-  }, [t]);
+    if (reduced) {
+      t.set(1); // convoy at the end of the route
+      return;
+    }
+    t.set(
+      withRepeat(
+        withSequence(withTiming(1, { duration: 3400, easing: EASE_IN_OUT, ...LOOP }), withTiming(0, { duration: 0, ...LOOP })),
+        -1,
+      ),
+    );
+    return () => cancelAnimation(t);
+  }, [reduced, t]);
   const lead = useAnimatedStyle(() => {
-    const p = pointAt(t.value);
+    const p = pointAt(t.get());
     return { transform: [{ translateX: p.x - 24 }, { translateY: p.y - 34 }] };
   });
 
@@ -225,11 +299,28 @@ export function GroupScene() {
 /** 3. Safety: an SOS pulses and the alert drops in for everyone. */
 export function SosScene() {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const b = useSharedValue(0);
   useEffect(() => {
-    b.value = withRepeat(withSequence(withDelay(500, withSpring(1, { damping: 12 })), withDelay(2200, withTiming(0, { duration: 250 }))), -1);
-  }, [b]);
-  const banner = useAnimatedStyle(() => ({ opacity: b.value, transform: [{ translateY: interpolate(b.value, [0, 1], [-24, 0]) }] }));
+    if (reduced) {
+      b.set(1); // alert shown
+      return;
+    }
+    b.set(
+      withRepeat(
+        withSequence(
+          withDelay(500, withTiming(1, { ...Timing.enter, ...LOOP })),
+          withDelay(2200, withTiming(0, { ...Timing.exit, ...LOOP })),
+        ),
+        -1,
+      ),
+    );
+    return () => cancelAnimation(b);
+  }, [b, reduced]);
+  const banner = useAnimatedStyle(() => {
+    const v = b.get();
+    return { opacity: v, transform: [{ translateY: interpolate(v, [0, 1], [-24, 0]) }] };
+  });
   return (
     <View style={styles.scene}>
       <MapBackdrop />
@@ -252,11 +343,26 @@ export function SosScene() {
 /** 4. Navigation: the next-turn card with a turning compass. */
 export function NavScene() {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const spin = useSharedValue(0);
   useEffect(() => {
-    spin.value = withRepeat(withSequence(withTiming(-35, { duration: 1400 }), withTiming(10, { duration: 1400 })), -1, true);
-  }, [spin]);
-  const compass = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.value}deg` }] }));
+    if (reduced) {
+      spin.set(0); // compass pointing ahead
+      return;
+    }
+    spin.set(
+      withRepeat(
+        withSequence(
+          withTiming(-35, { duration: 1400, easing: EASE_IN_OUT, ...LOOP }),
+          withTiming(10, { duration: 1400, easing: EASE_IN_OUT, ...LOOP }),
+        ),
+        -1,
+        true,
+      ),
+    );
+    return () => cancelAnimation(spin);
+  }, [reduced, spin]);
+  const compass = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.get()}deg` }] }));
   return (
     <View style={styles.scene}>
       <MapBackdrop drawRoute />

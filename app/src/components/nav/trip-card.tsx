@@ -3,28 +3,28 @@ import { LuCircleDot, LuMapPin } from 'react-icons/lu';
 
 import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
-import { Size, Type } from '@/constants/theme';
+import { Size, TextStyles } from '@/constants/theme';
 import { useAddress } from '@/hooks/use-address';
 import { useTheme } from '@/hooks/use-theme';
 import type { LatLng } from '@/lib/types';
 
 type Props = { from: LatLng | null; toName: string; toAddress?: string };
 
-/** Bottom card of the ride view: where you started and where you're going. */
+/** Bottom card of the ride view: where you started and where you're going. Materialises with the NavBar. */
 export function TripCard({ from, toName, toAddress }: Props) {
   const theme = useTheme();
   const fromText = useAddress(from, 'Your starting point');
 
   return (
-    <Glass style={styles.card}>
+    <Glass materialize style={styles.card}>
       <View style={styles.row}>
         <View style={styles.iconCol}>
           <Icon icon={LuCircleDot} size={Size.iconSm} color={theme.textSecondary} />
           <View style={[styles.connector, { borderColor: theme.muted }]} />
         </View>
         <View style={styles.text}>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>From</Text>
-          <Text style={[styles.value, { color: theme.text }]} numberOfLines={1}>
+          <Text style={[TextStyles.tiny, styles.label, { color: theme.textSecondary }]}>From</Text>
+          <Text style={[TextStyles.label, { color: theme.text }]} numberOfLines={1}>
             {fromText}
           </Text>
         </View>
@@ -34,8 +34,8 @@ export function TripCard({ from, toName, toAddress }: Props) {
           <Icon icon={LuMapPin} size={Size.iconSm} color={theme.text} />
         </View>
         <View style={styles.text}>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>To</Text>
-          <Text style={[styles.value, { color: theme.text }]} numberOfLines={1}>
+          <Text style={[TextStyles.tiny, styles.label, { color: theme.textSecondary }]}>To</Text>
+          <Text style={[TextStyles.label, { color: theme.text }]} numberOfLines={1}>
             {toName}
             {toAddress && toAddress !== toName ? ` · ${toAddress}` : ''}
           </Text>
@@ -61,6 +61,5 @@ const styles = StyleSheet.create({
   iconCol: { width: 18, alignItems: 'center', paddingTop: 2 },
   connector: { flex: 1, borderLeftWidth: 1.5, borderStyle: 'dotted', marginTop: 4, minHeight: 10 },
   text: { flex: 1, paddingBottom: 4 },
-  label: { fontSize: Type.tiny, fontWeight: '600' },
-  value: { fontSize: Type.small + 1, fontWeight: '600' },
+  label: { fontWeight: '600' },
 });

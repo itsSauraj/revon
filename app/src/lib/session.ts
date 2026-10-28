@@ -73,7 +73,14 @@ async function loadProfile(user: AppUser): Promise<Profile | null> {
   } catch {
     // offline or rules not deployed: fall back to the cache
   }
-  return cached ? { ...cached, phone: user.phoneNumber ?? cached.phone } : null;
+  if (cached) return { ...cached, phone: user.phoneNumber ?? cached.phone };
+  // No profile anywhere but the phone is already verified (e.g. a fresh install while offline):
+  // use the account's display name rather than sending the rider through SMS verification again,
+  // which would fail because the number is already linked. saveProfile syncs it later.
+  if (user.phoneNumber && user.displayName) {
+    return { name: user.displayName, phone: user.phoneNumber, sharePhone: true };
+  }
+  return null;
 }
 
 let started = false;

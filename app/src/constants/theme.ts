@@ -1,6 +1,6 @@
 import '@/global.css';
 
-import { Platform } from 'react-native';
+import { Platform, type TextStyle } from 'react-native';
 
 /**
  * Monochrome palette. `accent` (#C8F135) is the only brand color — use it sparingly: the main call to
@@ -84,6 +84,8 @@ export const Size = {
   iconSm: 15,
   radius: 12,
   radiusLg: 16,
+  /** Top corners of bottom sheets and the ride panel. */
+  radiusSheet: 20,
 } as const;
 
 export const Type = {
@@ -92,6 +94,30 @@ export const Type = {
   small: 13,
   tiny: 11,
 } as const;
+
+/**
+ * Type presets. Tracking is size-specific (tight on large text, slightly open on tiny text) and
+ * leading scales inversely with size, so one preset carries size, line height, tracking and weight
+ * as a set. Use these instead of raw fontSize values; all fonts stay scalable with the system setting.
+ */
+export const TextStyles = {
+  display: { fontSize: 28, lineHeight: 32, letterSpacing: -0.5, fontWeight: '800' },
+  headline: { fontSize: 22, lineHeight: 26, letterSpacing: -0.3, fontWeight: '800' },
+  title: { fontSize: Type.title, lineHeight: 22, letterSpacing: -0.2, fontWeight: '700' },
+  body: { fontSize: Type.body, lineHeight: 20, letterSpacing: 0, fontWeight: '400' },
+  bodyStrong: { fontSize: Type.body, lineHeight: 20, letterSpacing: 0, fontWeight: '600' },
+  small: { fontSize: Type.small, lineHeight: 18, letterSpacing: 0, fontWeight: '400' },
+  label: { fontSize: Type.small, lineHeight: 16, letterSpacing: 0.1, fontWeight: '600' },
+  tiny: { fontSize: Type.tiny, lineHeight: 14, letterSpacing: 0.2, fontWeight: '500' },
+  caps: { fontSize: 10, lineHeight: 12, letterSpacing: 0.6, fontWeight: '800', textTransform: 'uppercase' },
+} as const satisfies Record<string, TextStyle>;
+
+/**
+ * For TextInputs inside our own bordered fields: on web the browser also draws a focus outline inside
+ * the field, which the field's border colour already communicates. Spread into the input's style.
+ */
+// `outlineStyle` is a react-native-web extension, so it isn't in RN's TextStyle type.
+export const noWebOutline: TextStyle = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as TextStyle) : {};
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 

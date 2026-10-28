@@ -1,17 +1,20 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
 import { LuPhone, LuUser } from 'react-icons/lu';
+import Animated from 'react-native-reanimated';
 
 import { AuthScreen } from '@/components/auth/auth-screen';
 import { CountryPicker } from '@/components/auth/country-picker';
+import { FADE_IN } from '@/components/auth/field-motion';
 import { TextField } from '@/components/auth/text-field';
 import { Button } from '@/components/ui/button';
-import { Type } from '@/constants/theme';
+import { TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PHONE_TEST_MODE, startPhoneVerification } from '@/lib/auth';
 import { authErrorMessage } from '@/lib/auth-errors';
 import type { Country } from '@/lib/countries';
+import { haptic } from '@/lib/motion';
 import { setPendingPhone } from '@/lib/phone-flow';
 import { signOut, useSession } from '@/lib/session';
 import { defaultCountry, formatAsYouType, normalizeName, validateMobile, validateName } from '@/lib/validation';
@@ -28,6 +31,7 @@ export default function PhoneStep() {
   const [sharePhone, setSharePhone] = useState(profile?.sharePhone ?? true);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,10 +39,19 @@ export default function PhoneStep() {
   const mobile = validateMobile(number, country.code);
   const show = (f: string, e: string | null) => (touched[f] || submitted ? e : null);
 
+  const fail = (message?: string) => {
+    if (message) setError(message);
+    setAttempt((a) => a + 1);
+    haptic.error();
+  };
+
   const send = async () => {
     setSubmitted(true);
     setError(null);
-    if (nameError || !mobile.e164) return;
+    if (nameError || !mobile.e164) {
+      fail();
+      return;
+    }
     setBusy(true);
     try {
       const verification = await startPhoneVerification(mobile.e164);
@@ -51,7 +64,7 @@ export default function PhoneStep() {
       });
       router.push('/auth/otp');
     } catch (e) {
-      setError(authErrorMessage(e));
+      fail(authErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -73,6 +86,7 @@ export default function PhoneStep() {
         autoComplete="name"
         maxLength={40}
         error={show('name', nameError)}
+        shakeKey={attempt}
       />
       <TextField
         label="Mobile number"
@@ -95,9 +109,11 @@ export default function PhoneStep() {
         maxLength={20}
         placeholder={country.code === 'IN' ? '98765 43210' : undefined}
         error={show('number', mobile.error)}
+        shakeKey={attempt}
       />
       <View style={styles.switchRow}>
-        <Text style={[styles.switchText, { color: theme.text }]}>Let riders in my group call me</Text>
+        <Text style={[TextStyles.body, styles.switchText, { color: theme.text }]}>Let riders in my group call me</Text>
+        {/* The platform switch: its own motion, nothing added. */}
         <Switch
           value={sharePhone}
           onValueChange={setSharePhone}
@@ -106,26 +122,26 @@ export default function PhoneStep() {
           ios_backgroundColor={theme.border}
         />
       </View>
-      <Text style={[styles.hint, { color: theme.textSecondary }]}>
+      <Text style={[TextStyles.tiny, { color: theme.textSecondary }]}>
         Your number is only shown to riders in a ride you join, and only if this is on. Standard SMS rates may apply.
       </Text>
       {PHONE_TEST_MODE && (
-        <Text style={[styles.hint, { color: theme.textSecondary }]}>
+        <Text style={[TextStyles.tiny, { color: theme.textSecondary }]}>
           Test mode: no reCAPTCHA. Only Firebase test phone numbers work.
         </Text>
       )}
-      {error && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
-      <Pressable accessibilityRole="button" onPress={() => signOut()}>
-        <Text style={[styles.link, { color: theme.textSecondary }]}>Sign out</Text>
-      </Pressable>
+      {error && (
+        <Animated.Text entering={FADE_IN} style={[TextStyles.small, { color: theme.danger }]}>
+          {error}
+        </Animated.Text>
+      )}
+      <Button label="Sign out" variant="ghost" size="sm" style={styles.link} onPress={() => signOut()} />
     </AuthScreen>
   );
 }
 
 const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  switchText: { flex: 1, fontSize: Type.small + 1 },
-  hint: { fontSize: Type.tiny + 1, lineHeight: 17 },
-  error: { fontSize: Type.small },
-  link: { fontSize: Type.small, fontWeight: '700', textDecorationLine: 'underline' },
+  switchText: { flex: 1 },
+  link: { alignSelf: 'flex-start', paddingHorizontal: 0 },
 });

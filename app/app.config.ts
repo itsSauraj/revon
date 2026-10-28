@@ -21,6 +21,12 @@ for (const [name, value] of Object.entries({ GOOGLE_MAPS_ANDROID_KEY: androidMap
   }
 }
 
+// ---- Android toolchain ----
+// React Native Firebase v27 (Firebase BoM 35) is compiled with Kotlin 2.4, which needs a Kotlin >= 2.3
+// compiler; React Native 0.86 brings 2.1.20. 2.3.20 is the newest Kotlin Expo SDK 57's compiler plugin
+// supports. See plugins/with-android-kotlin.js.
+const KOTLIN_VERSION = '2.3.20';
+
 // ---- Firebase (React Native Firebase on Android/iOS) ----
 // Download these from Firebase console > Project settings > Your apps. They're gitignored; for EAS
 // builds, upload them as EAS file environment variables with these names.
@@ -71,6 +77,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...(hasIosFirebase ? { googleServicesFile: iosServicesFile } : {}),
     infoPlist: {
       LSApplicationQueriesSchemes: ['comgooglemaps', 'tel'],
+      // Let animations run at 120 fps on ProMotion displays.
+      CADisableMinimumFrameDurationOnPhone: true,
     },
   },
   android: {
@@ -123,8 +131,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...(hasAndroidFirebase || hasIosFirebase
       ? (['@react-native-firebase/app', '@react-native-firebase/auth', '@react-native-google-signin/google-signin'] as const)
       : []),
-    // React Native Firebase on iOS needs frameworks.
-    ['expo-build-properties', { ios: { useFrameworks: 'dynamic' } }],
+    // React Native Firebase needs frameworks on iOS and Kotlin >= 2.3 on Android.
+    ['expo-build-properties', { ios: { useFrameworks: 'dynamic' }, android: { kotlinVersion: KOTLIN_VERSION } }],
+    ['./plugins/with-android-kotlin', { kotlinVersion: KOTLIN_VERSION }],
   ],
   experiments: {
     typedRoutes: true,

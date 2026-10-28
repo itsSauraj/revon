@@ -1,11 +1,15 @@
-import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { StyleSheet, type ViewStyle } from 'react-native';
 import { LuNavigation2 } from 'react-icons/lu';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { Size } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { Spring } from '@/lib/motion';
 
 import { Glass } from './glass';
 import { Icon } from './icon';
+import { hitSlopFor, PressableScale } from './pressable-scale';
 
 type Props = {
   /** Map rotation in degrees clockwise from north. */
@@ -23,29 +27,39 @@ export function isRotated(heading: number) {
   return h > 1 && h < 359;
 }
 
+/** Signed shortest turn from `from` to `to`, in degrees (−180, 180]. */
+function shortestTurn(from: number, to: number) {
+  return ((((to - from) % 360) + 540) % 360) - 180;
+}
+
 /** Floating compass: the arrow always points to north; tap to face north. */
 export function CompassButton({ heading, onPress, accessibilityLabel = 'Face north', active, style }: Props) {
   const theme = useTheme();
+  // Accumulated rotation (not wrapped) so each heading change takes the shortest path and the
+  // spring continues from wherever the arrow is, carrying its velocity.
+  const rotation = useSharedValue(-heading);
+  const resting = useRef(-heading);
+
+  useEffect(() => {
+    const next = resting.current + shortestTurn(resting.current, -heading);
+    resting.current = next;
+    rotation.set(withSpring(next, Spring.settle));
+  }, [heading, rotation]);
+
+  const arrow = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.get()}deg` }] }));
+
   return (
-    <Pressable
-      accessibilityRole="button"
+    <PressableScale
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: !!active }}
       onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.btn,
-        {
-          backgroundColor: active ? theme.inverse : 'transparent',
-          opacity: pressed ? 0.75 : 1,
-        },
-        style,
-      ]}>
+      hitSlop={hitSlopFor(Size.fab)}
+      style={[styles.btn, { backgroundColor: active ? theme.inverse : 'transparent' }, style]}>
       {!active && <Glass interactive style={[StyleSheet.absoluteFill, { borderRadius: Size.fab / 2 }]} />}
-      <View style={{ transform: [{ rotate: `${-heading}deg` }] }}>
+      <Animated.View style={arrow}>
         <Icon icon={LuNavigation2} size={Math.round(Size.fab * 0.42)} color={active ? theme.onInverse : theme.text} />
-      </View>
-    </Pressable>
+      </Animated.View>
+    </PressableScale>
   );
 }
 

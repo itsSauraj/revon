@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   LuChevronLeft,
   LuFlag,
@@ -15,6 +15,7 @@ import {
   LuShare2,
   LuUsers,
 } from 'react-icons/lu';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LayersSheet } from '@/components/map/layers-sheet';
@@ -34,7 +35,8 @@ import { CompassButton, isRotated } from '@/components/ui/compass-button';
 import { Glass } from '@/components/ui/glass';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
-import { Size, Type } from '@/constants/theme';
+import { hitSlopFor, MIN_HIT, PressableScale } from '@/components/ui/pressable-scale';
+import { Size, TextStyles } from '@/constants/theme';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { useRide } from '@/hooks/use-ride';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
@@ -44,6 +46,7 @@ import { centerOn } from '@/lib/camera';
 import { confirmAction, shareText } from '@/lib/dialog';
 import { openGoogleMapsNav } from '@/lib/google';
 import { getActiveRideId, isTracking, startTracking, stopTracking, type TrackingMode } from '@/lib/location-task';
+import { haptic } from '@/lib/motion';
 import {
   clearRegroup,
   clearSos,
@@ -71,7 +74,11 @@ export default function RideScreen() {
   const [navH, setNavH] = useState(110);
   const nav = useRouteFollow(map, myPos, ride.meta?.avoid);
   const compass = useMapHeading(map);
-  const [panelH, setPanelH] = useState(220);
+  /** The panel's live visible height, written on the UI thread; the bottom controls ride on it. */
+  const sheetPos = useSharedValue(0);
+  /** Where the panel last came to rest: map padding and framing only change on a settle. */
+  const [panelH, setPanelH] = useState(0);
+  const floating = useAnimatedStyle(() => ({ transform: [{ translateY: -sheetPos.get() }] }));
   const [tracking, setTracking] = useState<TrackingMode | null>(null);
   const invited = useRef(false);
   const fitted = useRef(false);
@@ -170,7 +177,7 @@ export default function RideScreen() {
   if (!ride.meta || !ride.isMember) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <Text style={[styles.msg, { color: theme.text }]}>
+        <Text style={[TextStyles.bodyStrong, styles.msg, { color: theme.text }]}>
           {ride.meta ? "You're not in this ride." : 'This ride no longer exists.'}
         </Text>
         <Button label="Back to map" variant="inverse" onPress={() => router.replace('/')} />
@@ -192,6 +199,8 @@ export default function RideScreen() {
       destructive: true,
     });
     if (!ok) return;
+    // Destructive action firing: the one haptic for this flow, as the screen starts to go.
+    haptic.medium();
     await stopTracking({ keepContext: false });
     await leaveRide(id, uid).catch(() => {});
     router.replace('/');
@@ -227,6 +236,7 @@ export default function RideScreen() {
         showsCompass={false}
         toolbarEnabled={false}
         // In the ride view, a larger top inset puts the rider lower on screen to show more road ahead.
+        // The bottom inset is the panel's settled height, so the map never re-pads mid-drag.
         mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH, left: 0 }}
         onUserLocationChange={(e) => {
           const c = e.nativeEvent.coordinate;
@@ -272,29 +282,33 @@ export default function RideScreen() {
           offRoute={nav.offRoute}
           arrived={nav.arrived}
           onSteps={() => setShowSteps(true)}
-          onExit={nav.stop}
+          onExit={() => {
+            setShowSteps(false);
+            nav.stop();
+          }}
           onHeight={setNavH}
         />
       ) : (
         <View style={[styles.topBar, { top: insets.top + 8 }]}>
-          <Pressable
-            accessibilityRole="button"
+          <PressableScale
+            accessibilityLabel="Back to the map"
+            hitSlop={hitSlopFor(MIN_HIT, Size.controlSm)}
             onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
             style={styles.topPill}>
-            <Glass style={[StyleSheet.absoluteFill, styles.pillGlass]} />
+            <Glass interactive style={[StyleSheet.absoluteFill, styles.pillGlass]} />
             <Icon icon={LuChevronLeft} size={Size.iconSm} color={theme.text} />
-            <Text style={[styles.topText, { color: theme.text }]}>Map</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text style={[TextStyles.label, { color: theme.text }]}>Map</Text>
+          </PressableScale>
+          <PressableScale
             accessibilityLabel={`Share ride code ${meta.code}`}
+            hitSlop={hitSlopFor(MIN_HIT, Size.controlSm)}
             onPress={share}
             style={styles.topPill}>
-            <Glass style={[StyleSheet.absoluteFill, styles.pillGlass]} />
+            <Glass interactive style={[StyleSheet.absoluteFill, styles.pillGlass]} />
             {meta.locked && <Icon icon={LuLock} size={13} color={theme.textSecondary} />}
-            <Text style={[styles.topText, { color: theme.text }]}>{meta.code}</Text>
+            <Text style={[TextStyles.label, { color: theme.text }]}>{meta.code}</Text>
             <Icon icon={LuShare2} size={13} color={theme.textSecondary} />
-          </Pressable>
+          </PressableScale>
         </View>
       )}
 
@@ -305,15 +319,6 @@ export default function RideScreen() {
         onPress={(b) => b.uid && b.uid !== uid && focusRider(b.uid)}
       />
 
-      {/* Floating controls above the panel */}
-      <View style={[styles.sos, { bottom: panelH + 12 }]}>
-        {nav.active && !nav.following && <RecenterButton onPress={nav.recenter} />}
-        <SosButton
-          active={sosActive}
-          onTrigger={() => setStatus(id, uid, 'sos').catch(() => {})}
-          onClear={() => clearSos(id, uid).catch(() => {})}
-        />
-      </View>
       {/* Top right, under the top bar / ride view bar, so the panel never covers it. */}
       <View style={[styles.fabs, { top: overlayTop }]}>
         <IconButton
@@ -368,47 +373,54 @@ export default function RideScreen() {
         )}
       </View>
 
-      <View onLayout={(e) => setPanelH(e.nativeEvent.layout.height)} style={styles.panelWrap} pointerEvents="box-none">
-        <RidePanel
-          meta={meta}
-          riders={ride.riders}
-          myUid={uid}
-          myStatus={me.status}
-          myRole={me.role}
-          gapM={ride.gapM}
-          trackingNote={trackingNote}
-          onStatus={(s) => setStatus(id, uid, s).catch(() => {})}
-          onRole={(r) => setRole(id, uid, r, ride.members).catch(() => {})}
-          onRiderPress={setSelected}
-          onInvite={share}
-          onToggleLock={() => setLocked(id, uid, !meta.locked).catch(() => {})}
-          onRegroupHere={() => myPos && regroupAt(myPos, `Regroup at ${me.name}`)}
-          onLeave={leave}
-        />
-      </View>
+      {/* The panel fills the screen (touches pass through to the map) and pins itself to the bottom. */}
+      <RidePanel
+        meta={meta}
+        riders={ride.riders}
+        myUid={uid}
+        myStatus={me.status}
+        myRole={me.role}
+        gapM={ride.gapM}
+        trackingNote={trackingNote}
+        position={sheetPos}
+        onSettle={setPanelH}
+        onStatus={(s) => setStatus(id, uid, s).catch(() => {})}
+        onRole={(r) => setRole(id, uid, r, ride.members).catch(() => {})}
+        onRiderPress={setSelected}
+        onInvite={share}
+        onToggleLock={() => setLocked(id, uid, !meta.locked).catch(() => {})}
+        onRegroupHere={() => myPos && regroupAt(myPos, `Regroup at ${me.name}`)}
+        onLeave={leave}
+      />
 
-      {selectedRider && (
-        <MemberCard
-          rider={selectedRider}
-          myPosition={myPos}
-          isMe={selectedRider.uid === uid}
-          onClose={() => setSelected(null)}
-          onNavigate={(to) => {
-            setSelected(null);
-            nav.start(to);
-          }}
+      {/* Re-center and SOS sit just above the panel and move with it, frame by frame, on the UI thread. */}
+      <Animated.View style={[styles.floating, floating]} pointerEvents="box-none">
+        {nav.active && !nav.following && <RecenterButton onPress={nav.recenter} />}
+        <SosButton
+          active={sosActive}
+          onTrigger={() => setStatus(id, uid, 'sos').catch(() => {})}
+          onClear={() => clearSos(id, uid).catch(() => {})}
         />
-      )}
+      </Animated.View>
 
-      {showLayers && <LayersSheet onClose={() => setShowLayers(false)} />}
-
-      {showSteps && nav.target && (
-        <StepsSheet
-          steps={nav.route?.steps ?? []}
-          onClose={() => setShowSteps(false)}
-          onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
-        />
-      )}
+      {/* Modal sheets stay mounted and paint over everything else. */}
+      <MemberCard
+        rider={selectedRider}
+        myPosition={myPos}
+        isMe={selectedRider?.uid === uid}
+        onClose={() => setSelected(null)}
+        onNavigate={(to) => {
+          setSelected(null);
+          nav.start(to);
+        }}
+      />
+      <StepsSheet
+        visible={showSteps && nav.active}
+        steps={nav.route?.steps ?? []}
+        onDismiss={() => setShowSteps(false)}
+        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+      />
+      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
     </View>
   );
 }
@@ -416,7 +428,7 @@ export default function RideScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20 },
-  msg: { fontSize: Type.body, fontWeight: '600', textAlign: 'center' },
+  msg: { textAlign: 'center' },
   topBar: { position: 'absolute', left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between' },
   topPill: {
     height: Size.controlSm,
@@ -431,8 +443,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   pillGlass: { borderRadius: Size.controlSm / 2 },
-  topText: { fontSize: Type.small + 1, fontWeight: '700', letterSpacing: 0.3 },
-  sos: { position: 'absolute', left: 14, gap: 10, alignItems: 'flex-start' },
   fabs: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' },
-  panelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  floating: { position: 'absolute', left: 14, bottom: 12, gap: 10, alignItems: 'flex-start' },
 });

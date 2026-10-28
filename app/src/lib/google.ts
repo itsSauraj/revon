@@ -18,6 +18,19 @@ function latLng(p: LatLng) {
   return { latitude: p.latitude, longitude: p.longitude };
 }
 
+/**
+ * Language for Google results (BCP-47). Without it Google infers a language from the route's
+ * location, which can return directions in a regional script the rider doesn't read.
+ */
+function deviceLanguage(): string {
+  try {
+    const nav = typeof navigator !== 'undefined' ? (navigator as { language?: string }).language : undefined;
+    return nav || Intl.DateTimeFormat().resolvedOptions().locale || 'en';
+  } catch {
+    return 'en';
+  }
+}
+
 async function googlePost<T>(url: string, fieldMask: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
@@ -57,6 +70,7 @@ export async function placesAutocomplete(
     {
       input,
       sessionToken,
+      languageCode: deviceLanguage(),
       ...(near
         ? { locationBias: { circle: { center: latLng(near), radius: 50000 } } }
         : {}),
@@ -74,7 +88,7 @@ export async function placesAutocomplete(
 
 export async function placeDetails(placeId: string, sessionToken: string): Promise<Place> {
   const res = await fetch(
-    `https://places.googleapis.com/v1/places/${placeId}?sessionToken=${encodeURIComponent(sessionToken)}`,
+    `https://places.googleapis.com/v1/places/${placeId}?sessionToken=${encodeURIComponent(sessionToken)}&languageCode=${encodeURIComponent(deviceLanguage())}`,
     {
       headers: {
         'X-Goog-Api-Key': API_KEY,
@@ -134,6 +148,7 @@ export async function computeRoute(
     origin: { location: { latLng: latLng(origin) } },
     destination: { location: { latLng: latLng(destination) } },
     travelMode,
+    languageCode: deviceLanguage(),
     routingPreference: 'TRAFFIC_AWARE',
     routeModifiers: { avoidHighways: avoid.highways, avoidTolls: avoid.tolls },
   });

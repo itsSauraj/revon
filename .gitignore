@@ -29,7 +29,9 @@ database-debug.log
 .hive-mind/
 ruvector.db
 *.ruvector.db
-agentdb*.db
+agentdb*
+*.rvf
+*.rvf.lock
 CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
@@ -41,6 +43,7 @@ AGENTS.md
 .aider*
 .github/copilot-instructions.md
 MEMORY.md
+Task
 
 # logs
 *.log
@@ -49,3 +52,9 @@ npm-debug.*
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Signing keys (never commit)
+credentials/
+
+# Local build outputs (APKs)
+builds/

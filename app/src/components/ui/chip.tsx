@@ -1,36 +1,46 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import type { IconType } from 'react-icons';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 
-import { Size, Type } from '@/constants/theme';
+import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { Icon } from './icon';
+import { hitSlopFor, PressableScale } from './pressable-scale';
+import { transition } from './transition';
 
 type Props = { label: string; selected?: boolean; onPress: () => void; icon?: IconType };
 
 /** Compact toggle. Selected chips invert (monochrome), they don't use the accent. */
 export function Chip({ label, selected, onPress, icon }: Props) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const fg = selected ? theme.onInverse : theme.text;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
+    <PressableScale
+      accessibilityState={{ selected: !!selected }}
       onPress={onPress}
-      hitSlop={4}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: selected ? theme.inverse : theme.surface,
-          borderColor: selected ? theme.inverse : theme.border,
-          opacity: pressed ? 0.75 : 1,
-        },
-      ]}>
-      {icon && <Icon icon={icon} size={Size.iconSm} color={fg} />}
-      <Text style={[styles.label, { color: fg }]}>{label}</Text>
-    </Pressable>
+      haptic="selection"
+      hitSlop={hitSlopFor(MIN_WIDTH, Size.chip)}>
+      {/* Colours cross over with a CSS transition (Timing.toggle); the press scale lives on the wrapper. */}
+      <Animated.View
+        style={[
+          styles.chip,
+          transition(['backgroundColor', 'borderColor'], 'toggle', reduced),
+          {
+            backgroundColor: selected ? theme.inverse : theme.surface,
+            borderColor: selected ? theme.inverse : theme.border,
+          },
+        ]}>
+        {icon && <Icon icon={icon} size={Size.iconSm} color={fg} />}
+        <Animated.Text style={[TextStyles.label, transition('color', 'toggle', reduced), { color: fg }]}>{label}</Animated.Text>
+      </Animated.View>
+    </PressableScale>
   );
 }
+
+// Chips are wider than the hit target; only the height needs slop.
+const MIN_WIDTH = 44;
 
 const styles = StyleSheet.create({
   chip: {
@@ -42,5 +52,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  label: { fontSize: Type.small, fontWeight: '600' },
 });

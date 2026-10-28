@@ -1,10 +1,13 @@
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { IconType } from 'react-icons';
-import { LuBike, LuBuilding2, LuMap, LuMountain, LuSatellite, LuTrafficCone, LuX } from 'react-icons/lu';
+import { LuBike, LuBuilding2, LuMap, LuMountain, LuSatellite, LuTrafficCone } from 'react-icons/lu';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
-import { IconButton } from '@/components/ui/icon-button';
-import { Size, Type } from '@/constants/theme';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { SheetModal } from '@/components/ui/sheet';
+import { transition } from '@/components/ui/transition';
+import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { type MapLayers, type MapType, setMapLayers, useMapLayers } from '@/lib/map-layers';
 
@@ -20,19 +23,17 @@ const DETAILS: { key: keyof Omit<MapLayers, 'type'>; label: string; icon: IconTy
   { key: 'bicycling', label: 'Bicycling', icon: LuBike, webOnly: true },
 ];
 
-/** Map type and map details picker, like the Layers sheet in Google Maps. */
-export function LayersSheet({ onClose }: { onClose: () => void }) {
+type Props = { visible: boolean; onDismiss: () => void };
+
+/** Map type and map details picker, like the Layers sheet in Google Maps. Keep mounted; flip `visible`. */
+export function LayersSheet({ visible, onDismiss }: Props) {
   const theme = useTheme();
   const layers = useMapLayers();
 
+  // Nothing scrolls inside, so the whole sheet is the drag area.
   return (
-    <Modal transparent animationType="slide" visible onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Map type</Text>
-          <IconButton icon={LuX} variant="ghost" size={Size.controlSm} accessibilityLabel="Close" onPress={onClose} />
-        </View>
+    <SheetModal visible={visible} onDismiss={onDismiss} title="Map type" dragArea="sheet">
+      <View style={styles.content}>
         <View style={styles.row}>
           {TYPES.map((t) => (
             <Tile
@@ -45,7 +46,7 @@ export function LayersSheet({ onClose }: { onClose: () => void }) {
           ))}
         </View>
 
-        <Text style={[styles.title, styles.section, { color: theme.text }]}>Map details</Text>
+        <Text style={[TextStyles.title, styles.section, { color: theme.text }]}>Map details</Text>
         <View style={styles.row}>
           {DETAILS.map((d) => {
             const unavailable = d.webOnly && Platform.OS !== 'web';
@@ -63,7 +64,7 @@ export function LayersSheet({ onClose }: { onClose: () => void }) {
           })}
         </View>
       </View>
-    </Modal>
+    </SheetModal>
   );
 }
 
@@ -76,44 +77,39 @@ type TileProps = {
   caption?: string;
 };
 
+/** Selected tiles invert (monochrome), with the colours crossing over in a CSS transition. */
 function Tile({ label, icon, selected, onPress, disabled, caption }: TileProps) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   return (
-    <Pressable
-      accessibilityRole="button"
+    <PressableScale
+      accessibilityLabel={label}
       accessibilityState={{ selected, disabled }}
       disabled={disabled}
+      haptic="selection"
       onPress={onPress}
-      style={({ pressed }) => [styles.tile, { opacity: disabled ? 0.4 : pressed ? 0.75 : 1 }]}>
-      <View
+      style={styles.tile}>
+      <Animated.View
         style={[
           styles.tileIcon,
+          transition(['backgroundColor', 'borderColor'], 'toggle', reduced),
           {
             backgroundColor: selected ? theme.inverse : theme.backgroundElement,
             borderColor: selected ? theme.inverse : theme.border,
           },
         ]}>
         <Icon icon={icon} size={20} color={selected ? theme.onInverse : theme.text} />
-      </View>
-      <Text style={[styles.tileLabel, { color: theme.text, fontWeight: selected ? '700' : '500' }]} numberOfLines={1}>
+      </Animated.View>
+      <Text style={[TextStyles.label, { color: theme.text }]} numberOfLines={1}>
         {label}
       </Text>
-      {caption && <Text style={[styles.caption, { color: theme.textSecondary }]}>{caption}</Text>}
-    </Pressable>
+      {caption && <Text style={[TextStyles.tiny, styles.caption, { color: theme.textSecondary }]}>{caption}</Text>}
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
-  sheet: {
-    padding: 16,
-    paddingBottom: 28,
-    borderTopLeftRadius: Size.radiusLg,
-    borderTopRightRadius: Size.radiusLg,
-    gap: 10,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: Type.body, fontWeight: '700' },
+  content: { paddingHorizontal: 16, paddingTop: 6, gap: 10 },
   section: { marginTop: 6 },
   row: { flexDirection: 'row', gap: 10 },
   tile: { flex: 1, alignItems: 'center', gap: 6 },
@@ -125,6 +121,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileLabel: { fontSize: Type.small - 1 },
-  caption: { fontSize: Type.tiny - 1, marginTop: -4 },
+  caption: { marginTop: -4 },
 });

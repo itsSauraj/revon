@@ -205,6 +205,37 @@ Also upload `google-services.json` / `GoogleService-Info.plist` as EAS **file** 
 gitignored files aren't uploaded to EAS. Add the EAS build's SHA-1/SHA-256
 (`npx eas-cli@latest credentials -p android`) to Firebase.
 
+### Shareable APK (local)
+
+A release build signed with the project's own key, to send to testers directly (no EAS account or Play
+Store needed):
+
+```bash
+npm run apk                       # → builds/revon-<version>-release.apk
+```
+
+It runs `expo prebuild --clean`, Gradle's `assembleRelease`, then signs the APK with
+`credentials/revon-release.keystore` and verifies it. `credentials/` and `builds/` are gitignored. It reads
+`credentials/revon-release.env`:
+
+```
+REVON_KEYSTORE=credentials/revon-release.keystore
+REVON_KEY_ALIAS=revon
+REVON_STORE_PASSWORD=…
+REVON_KEY_PASSWORD=…
+```
+
+No keystore yet? Create one and keep it (and the passwords) safe: every later update must be signed with
+the same key, and Google sign-in only works in builds whose key is registered in Firebase.
+
+```bash
+keytool -genkeypair -v -keystore credentials/revon-release.keystore -alias revon -keyalg RSA -keysize 2048 -validity 10000
+keytool -list -v -keystore credentials/revon-release.keystore -alias revon    # SHA-1 / SHA-256 for Firebase
+```
+
+Testers install the file with `adb install -r <file>`, or open it on the phone (Android asks once to allow
+installs from that app). Add `-- --no-prebuild` to reuse the current `android/` folder.
+
 ### First launch
 
 The app shows a welcome intro, then sign-in (Google or email), email verification for email accounts,
@@ -220,7 +251,7 @@ then name and mobile number with an SMS code. Use a Firebase **test number** whi
 | JavaScript/TypeScript in `src/` | Nothing: the app reloads |
 | `EXPO_PUBLIC_*` values in `.env.local` | Restart the dev server with a clean cache: `npm run start:usb:clear` |
 | A Maps key, `google-services.json`, `GoogleService-Info.plist`, `app.config.ts` | `npx expo prebuild --platform android`, then `npm run android:dev -- --device <device>` |
-| Added or upgraded a package with native code | Same as above |
+| Added or upgraded a package with native code (e.g. `expo-haptics`) | Same as above |
 
 Stop the dev server before `prebuild` or `npm install`. If it's left running while thousands of files
 change, it can stop responding (the app then shows a white screen), and you'll need to restart it.
@@ -235,7 +266,8 @@ change, it can stop responding (the app then shows a white screen), and you'll n
 | `npm run start` / `start:clear` | Dev server over Wi-Fi/LAN |
 | `npm run web` | Web build in the browser |
 | `npm run android:dev` | Local debug build, installed on a device/emulator (add `-- --device <name>`) |
-| `npm run android:release` | Local release build |
+| `npm run android:release` | Local release build, installed on a device/emulator |
+| `npm run apk` | Release APK signed with the release keystore, for testers → `builds/` ([details](#shareable-apk-local)) |
 | `npm run ios:dev` / `ios:release` | Local iOS builds (Mac only) |
 | `npm run build:dev:android` / `:ios` | EAS development build |
 | `npm run build:preview:android` / `:ios` | EAS preview build (APK on Android, for testers) |
@@ -273,6 +305,34 @@ app/
 
 Files ending in `.web.ts(x)` replace their native counterparts in the web build (for example
 `lib/auth.web.ts` uses the Firebase JS SDK, while `lib/auth.ts` uses React Native Firebase).
+
+---
+
+## Motion and interaction
+
+The interface follows one motion system (`src/lib/motion.ts`), translated from Apple's fluid-interface
+guidance to Reanimated:
+
+- **Springs take Apple's two parameters** (`duration` = response, `dampingRatio`). `Spring.settle`
+  (no overshoot) for anything that moves without a finger; `Spring.sheet(velocity)` /
+  `Spring.momentum(velocity)` after a drag or flick, carrying the release velocity so there's no seam
+  between the gesture and the animation.
+- **Timing** (`Timing.press/toggle/enter/exit/move`) with `EASE_OUT` for enter/exit and `EASE_IN_OUT`
+  for movement; never ease-in. CSS-transition forms live in `src/components/ui/transition.ts`.
+- **Everything a finger touches runs on the UI thread**: `PressableScale` (press-in scale on every
+  button and chip), `BottomSheet` / `SheetModal` (`src/components/ui/sheet.tsx`: 1:1 drag with the
+  grab offset, rubber-banding at the ends, momentum projection to pick the detent, interruptible
+  mid-flight, swipe to dismiss), swipe-to-dismiss alerts, the SOS hold.
+- **Haptics** (`haptic.*`, expo-haptics): one per user action, on the same frame as the visual, never
+  the only feedback: sheet detents, chip and layer selection, SOS trigger, sign-in success/error.
+- **Reduced motion / reduced transparency** are respected everywhere: configs carry
+  `ReduceMotion.System`, screen transitions become a cross-fade, parallax and shakes are dropped, and
+  glass surfaces go solid (`src/hooks/use-reduce-transparency.ts`).
+- **Typography** uses `TextStyles` from the theme: tracking tightens as text grows and loosens on tiny
+  labels; line height scales the other way.
+
+Feel can only be judged on a device, in a release build, ideally on the slowest Android you support.
+Expo Go and the simulator hide exactly the problems that matter.
 
 ---
 

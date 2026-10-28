@@ -1,11 +1,14 @@
-import { type ReactNode, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, type TextInputProps } from 'react-native';
 import type { IconType } from 'react-icons';
 import { LuEye, LuEyeOff } from 'react-icons/lu';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
-import { Size, Type } from '@/constants/theme';
+import { noWebOutline, Size, TextStyles, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+import { FADE_IN, FOCUS_TRANSITION, LABEL_TRANSITION, shakeSequence } from './field-motion';
 
 type Props = TextInputProps & {
   label: string;
@@ -16,18 +19,38 @@ type Props = TextInputProps & {
   password?: boolean;
   /** Custom content before the input (e.g. a country code button). */
   left?: ReactNode;
+  /**
+   * The screen's failed-submit counter. Each new value shakes the field once, and only if it is
+   * showing an error at that moment; typing never shakes. The screen fires the haptic.
+   */
+  shakeKey?: number;
 };
 
-export function TextField({ label, icon, error, password, left, style, onBlur, onFocus, ...input }: Props) {
+export function TextField({ label, icon, error, password, left, style, onBlur, onFocus, shakeKey = 0, ...input }: Props) {
   const theme = useTheme();
+  const reduced = useReducedMotion();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
+  const shakeX = useSharedValue(0);
+  const shaken = useRef(0);
+
   const borderColor = error ? theme.danger : focused ? theme.text : theme.border;
+  const labelColor = error ? theme.danger : focused ? theme.text : theme.textSecondary;
+
+  useEffect(() => {
+    if (!shakeKey || shakeKey === shaken.current) return;
+    // Mark the attempt seen even when this field is fine, so an error that shows up later (on blur,
+    // while typing) never shakes on its own. Reduced motion: the red border and the text say "no".
+    shaken.current = shakeKey;
+    if (error && !reduced) shakeX.set(shakeSequence());
+  }, [shakeKey, error, reduced, shakeX]);
+
+  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.get() }] }));
 
   return (
-    <View style={styles.wrap}>
-      <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text>
-      <View style={[styles.field, { borderColor, backgroundColor: theme.backgroundElement }]}>
+    <Animated.View style={[styles.wrap, shakeStyle]}>
+      <Animated.Text style={[TextStyles.label, LABEL_TRANSITION, { color: labelColor }]}>{label}</Animated.Text>
+      <Animated.View style={[styles.field, FOCUS_TRANSITION, { borderColor, backgroundColor: theme.backgroundElement }]}>
         {left}
         {icon && <Icon icon={icon} size={Size.iconSm} color={theme.textSecondary} />}
         <TextInput
@@ -54,15 +77,18 @@ export function TextField({ label, icon, error, password, left, style, onBlur, o
             <Icon icon={hidden ? LuEye : LuEyeOff} size={Size.iconSm} color={theme.textSecondary} />
           </Pressable>
         )}
-      </View>
-      {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
-    </View>
+      </Animated.View>
+      {error ? (
+        <Animated.Text entering={FADE_IN} style={[TextStyles.tiny, { color: theme.danger }]}>
+          {error}
+        </Animated.Text>
+      ) : null}
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { fontSize: Type.small - 1, fontWeight: '600' },
   field: {
     height: Size.control + 4,
     borderRadius: Size.radius,
@@ -72,6 +98,5 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 12,
   },
-  input: { flex: 1, height: '100%', fontSize: Type.body },
-  error: { fontSize: Type.tiny + 1, fontWeight: '500' },
+  input: { flex: 1, height: '100%', fontSize: Type.body, ...noWebOutline },
 });
