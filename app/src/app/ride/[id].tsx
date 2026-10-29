@@ -61,6 +61,9 @@ import {
 import { useSession } from '@/lib/session';
 import type { LatLng } from '@/lib/types';
 
+/** Height of the SOS pill plus its gap above the panel. */
+const SOS_CLEARANCE = 68;
+
 export default function RideScreen() {
   const { id, invite } = useLocalSearchParams<{ id: string; invite?: string }>();
   const theme = useTheme();
@@ -236,7 +239,8 @@ export default function RideScreen() {
         showsUserLocation={!nav.active}
         // In the ride view, a larger top inset puts the rider lower on screen to show more road ahead.
         // The bottom inset is the panel's settled height, so the map never re-pads mid-drag.
-        mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH, left: 0 }}
+        // Bottom inset clears the SOS pill above the panel as well, so the map logo and attribution stay visible.
+        mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH + SOS_CLEARANCE, left: 0 }}
         onPanDrag={nav.active ? nav.pause : undefined}
         onRegionChangeComplete={compass.onRegionChangeComplete}
         onLongPress={(e) => regroupAt(e.nativeEvent.coordinate, 'Regroup point')}>

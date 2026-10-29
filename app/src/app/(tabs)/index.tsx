@@ -209,13 +209,15 @@ export default function MapHome() {
       <MapView
         ref={map}
         style={StyleSheet.absoluteFill}
-        initialRegion={FALLBACK_REGION}
+        // Read once per mount; a map that remounts after a source switch starts on the rider.
+        initialRegion={me ? { latitude: me.latitude, longitude: me.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 } : FALLBACK_REGION}
         // The map's own dot gives way to the navigation puck while riding a route.
         showsUserLocation={!nav.active}
         mapPadding={{
           top: insets.top + (nav.active ? 220 : 60),
           right: 0,
-          bottom: nav.active ? 32 : destination ? 250 : 70,
+          // Keeps the map logo and attribution above the trip card / destination card / pills.
+          bottom: nav.active ? 150 : destination ? 250 : 70,
           left: 0,
         }}
         onPanDrag={nav.active ? nav.pause : undefined}
