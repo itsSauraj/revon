@@ -9,6 +9,7 @@
 import type { ReactNode, Ref } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
+import type { MapSource } from '@/lib/map-source';
 import type { LatLng } from '@/lib/types';
 
 export type Region = LatLng & { latitudeDelta: number; longitudeDelta: number };
@@ -41,6 +42,11 @@ export type MapPressEvent = { nativeEvent: { coordinate: LatLng } };
 
 export type MapViewProps = {
   ref?: Ref<MapRef>;
+  /**
+   * Draw with this source instead of the rider's setting. The ride screen passes the source a ride
+   * was created with, so Google content is only ever shown on a Google map (and OSM on OSM).
+   */
+  source?: MapSource;
   style?: StyleProp<ViewStyle>;
   initialRegion?: Region;
   /** Show the rider's position and report fixes through `onUserLocationChange`. */

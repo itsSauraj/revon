@@ -45,6 +45,7 @@ import { showMessage } from '@/lib/dialog';
 import { computeRoute, openExternalNav } from '@/lib/directions';
 import { decodePolyline, formatDistance, formatDuration } from '@/lib/geo';
 import { startTracking } from '@/lib/location-task';
+import { useMapSource } from '@/lib/map-source';
 import { EASE_OUT, haptic, Timing } from '@/lib/motion';
 import { newSessionToken, resolvePlace, searchPlaces } from '@/lib/places';
 import { checkActiveRide, createRide } from '@/lib/rides';
@@ -96,6 +97,19 @@ export default function MapHome() {
   const routing = Boolean(routeKey && me && routeResult?.key !== routeKey);
   const [starting, setStarting] = useState(false);
   const [activeRide, setActiveRide] = useState<string | null>(null);
+
+  // A destination or route belongs to the source that produced it and must not be redrawn on the
+  // other map, so a source switch (never possible mid-navigation; Settings locks it) clears them.
+  const source = useMapSource();
+  const prevSource = useRef(source);
+  useEffect(() => {
+    if (prevSource.current === source) return;
+    prevSource.current = source;
+    setQuery('');
+    setDestination(null);
+    setSuggestions([]);
+    setRouteResult(null);
+  }, [source]);
 
   useFocusEffect(
     useCallback(() => {

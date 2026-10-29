@@ -1,7 +1,9 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import type { MapRef } from '@/components/map/map-view';
 import { computeRoute } from '@/lib/directions';
+import type { MapSource } from '@/lib/map-source';
+import { setNavigating } from '@/lib/nav-state';
 import {
   ARRIVED_M,
   decodePolyline,
@@ -52,7 +54,10 @@ export function useRouteFollow(
   map: RefObject<MapRef | null>,
   fix: Fix | null,
   avoid?: { highways: boolean; tolls: boolean },
+  /** Routing source; defaults to the rider's setting. A ride passes the source it was created with. */
+  source?: MapSource,
 ) {
+  const id = useId();
   const [target, setTarget] = useState<Place | null>(null);
   const [routeFor, setRouteFor] = useState<{ target: Place; route: RouteWithSteps | null } | null>(null);
   const [following, setFollowing] = useState(true);
@@ -75,6 +80,12 @@ export function useRouteFollow(
 
   const offRoute = Boolean(split && split.crossM > OFF_ROUTE_M);
   const arrived = Boolean(fix && target && haversine(fix, target) < ARRIVED_M);
+
+  // Settings locks the map source while any ride view runs (the route belongs to its source).
+  useEffect(() => {
+    setNavigating(id, Boolean(target));
+    return () => setNavigating(id, false);
+  }, [id, target]);
 
   // The rider's heading: course over ground while moving; the road ahead while stopped (a stationary
   // GPS reports none), so in heading-up mode the route still runs up the screen at a standstill.
@@ -100,7 +111,7 @@ export function useRouteFollow(
     inflight.current = true;
     lastRequest.current = now;
     const forTarget = target;
-    computeRoute(fix, forTarget, avoid, true)
+    computeRoute(fix, forTarget, avoid, true, source)
       .then((r) => {
         setRouteFor({ target: forTarget, route: r });
         setError(r ? null : 'No route found');
@@ -110,7 +121,7 @@ export function useRouteFollow(
         inflight.current = false;
         offSince.current = null;
       });
-  }, [target, fix, route, split, arrived, avoid]);
+  }, [target, fix, route, split, arrived, avoid, source]);
 
   // Camera that follows the rider: centred on them, with the route running up the screen (heading-up)
   // or north at the top (north-up).

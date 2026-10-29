@@ -8,6 +8,7 @@ import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { externalNavName } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
+import type { MapSource } from '@/lib/map-source';
 import type { RouteStep } from '@/lib/types';
 
 import { maneuverIcon } from './maneuver';
@@ -18,10 +19,12 @@ type Props = {
   onDismiss: () => void;
   /** Optional hand-off to an installed maps app for riders who want spoken guidance. */
   onOpenExternal?: () => void;
+  /** Source the route came from (defaults to the rider's setting); names the hand-off app. */
+  source?: MapSource;
 };
 
 /** The full list of directions for the current route. Keep mounted; flip `visible`. */
-export function StepsSheet({ steps, visible, onDismiss, onOpenExternal }: Props) {
+export function StepsSheet({ steps, visible, onDismiss, onOpenExternal, source }: Props) {
   const theme = useTheme();
   const { height: windowH } = useWindowDimensions();
 
@@ -51,7 +54,7 @@ export function StepsSheet({ steps, visible, onDismiss, onOpenExternal }: Props)
       />
       {onOpenExternal && (
         <View style={styles.footer}>
-          <Button label={`Spoken guidance in ${externalNavName()}`} icon={LuVolume2} size="sm" onPress={onOpenExternal} />
+          <Button label={`Spoken guidance in ${externalNavName(source)}`} icon={LuVolume2} size="sm" onPress={onOpenExternal} />
         </View>
       )}
     </SheetModal>

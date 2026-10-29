@@ -138,7 +138,10 @@ Then create a key under **APIs & Services → Credentials → Create credentials
 ### Map sources
 
 The map, place search and routing come from one of two stacks, chosen per phone in **Settings → Map**.
-Rides don't care which: routes are stored the same way, and riders in one group can mix sources.
+The two are kept apart: a destination or route is only ever shown on the map of the source that
+produced it (Google Maps Platform terms forbid Google content on non-Google maps). Switching the
+source clears the current destination, is locked while a ride view runs, and a group ride always
+shows on the source it was created with, whatever each rider's setting.
 Options a source can't offer (traffic on OpenStreetMap, the bicycling layer on Google's mobile SDKs)
 are left out of the layers sheet, and both the sheet and the Settings picker say so.
 

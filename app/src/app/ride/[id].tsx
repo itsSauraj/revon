@@ -48,6 +48,7 @@ import { centerOn } from '@/lib/camera';
 import { confirmAction, shareText } from '@/lib/dialog';
 import { openExternalNav } from '@/lib/directions';
 import { getActiveRideId, isTracking, startTracking, stopTracking, type TrackingMode } from '@/lib/location-task';
+import type { MapSource } from '@/lib/map-source';
 import { haptic } from '@/lib/motion';
 import {
   clearRegroup,
@@ -77,7 +78,10 @@ export default function RideScreen() {
   const [showSteps, setShowSteps] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [navH, setNavH] = useState(110);
-  const nav = useRouteFollow(map, myPos, ride.meta?.avoid);
+  // The ride is shown on the source it was created with, whatever this phone's setting is: its
+  // destination and route are that source's content. Rides from before the field were all Google.
+  const rideSource: MapSource = ride.meta?.mapSource ?? 'google';
+  const nav = useRouteFollow(map, myPos, ride.meta?.avoid, rideSource);
   const compass = useMapHeading(map);
   /** The panel's live visible height, written on the UI thread; the bottom controls ride on it. */
   const sheetPos = useSharedValue(0);
@@ -233,6 +237,7 @@ export default function RideScreen() {
     <View style={styles.screen}>
       <MapView
         ref={map}
+        source={rideSource}
         style={StyleSheet.absoluteFill}
         initialRegion={{ ...meta.destination, latitudeDelta: 0.3, longitudeDelta: 0.3 }}
         // The map's own dot gives way to the navigation puck while riding a route.
@@ -418,14 +423,16 @@ export default function RideScreen() {
           setSelected(null);
           nav.start(to);
         }}
+        source={rideSource}
       />
       <StepsSheet
         visible={showSteps && nav.active}
         steps={nav.route?.steps ?? []}
         onDismiss={() => setShowSteps(false)}
-        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name)}
+        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name, rideSource)}
+        source={rideSource}
       />
-      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
+      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} source={rideSource} />
     </View>
   );
 }

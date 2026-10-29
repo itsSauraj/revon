@@ -10,7 +10,7 @@ import { transition } from '@/components/ui/transition';
 import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { type MapLayers, type MapType, setMapLayers, useMapLayers } from '@/lib/map-layers';
-import { MAP_SOURCES, unavailableNote, useMapCapabilities, useMapSource } from '@/lib/map-source';
+import { MAP_CAPABILITIES, MAP_SOURCES, type MapSource, unavailableNote, useMapSource } from '@/lib/map-source';
 
 const TYPES: { type: MapType; label: string; icon: IconType }[] = [
   { type: 'default', label: 'Default', icon: LuMap },
@@ -27,18 +27,24 @@ const DETAILS: { key: keyof Omit<MapLayers, 'type'>; label: string; icon: IconTy
 /** Tiles per row; rows with fewer options keep the same tile size. */
 const COLUMNS = 3;
 
-type Props = { visible: boolean; onDismiss: () => void };
+type Props = {
+  visible: boolean;
+  onDismiss: () => void;
+  /** The map's source when it differs from the rider's setting (a ride keeps the source it was created with). */
+  source?: MapSource;
+};
 
 /**
  * Map type and map details picker, like the Layers sheet in Google Maps. Only what the current map
  * source can draw is offered (see MAP_CAPABILITIES), and a note says what it can't, so nothing on the
  * sheet is a dead end. Keep mounted; flip `visible`.
  */
-export function LayersSheet({ visible, onDismiss }: Props) {
+export function LayersSheet({ visible, onDismiss, source: explicit }: Props) {
   const theme = useTheme();
   const layers = useMapLayers();
-  const caps = useMapCapabilities();
-  const source = useMapSource();
+  const setting = useMapSource();
+  const source = explicit ?? setting;
+  const caps = MAP_CAPABILITIES[source];
 
   const types = TYPES.filter((t) => t.type === 'default' || caps[t.type]);
   const details = DETAILS.filter((d) => caps[d.key]);

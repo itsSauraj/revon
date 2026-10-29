@@ -5,7 +5,7 @@
  * The map follows the app theme (dark map style in dark mode), and marker labels use a themed
  * callout instead of the default white bubble.
  */
-import { useEffect, useImperativeHandle, useRef } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import RNMapView, {
   Callout,
@@ -42,10 +42,16 @@ const DARK_STYLE: MapStyleElement[] = [
 
 const NATIVE_TYPE = { default: 'standard', satellite: 'hybrid', terrain: 'terrain' } as const;
 
-export function MapView({ ref, children, onPanDrag, onRegionChangeComplete, ...props }: MapViewProps) {
+export function MapView({ ref, children, mapPadding, onPanDrag, onRegionChangeComplete, ...props }: MapViewProps) {
   const dark = useColorScheme() === 'dark';
   const layers = useMapLayers();
   const inner = useRef<RNMapView | null>(null);
+  // react-native-maps 1.27 applies a mapPadding *update* straight to the GoogleMap, which is null until
+  // onMapReady, and crashes natively (NullPointerException in applyBaseMapPadding). A padding change
+  // in the first frames after mount is common: a map source switch that also drops the destination
+  // card. Keep the mount-time value until the map reports ready, then follow the prop.
+  const [initialPadding] = useState(mapPadding);
+  const [ready, setReady] = useState(false);
   // Once per gesture: the SDK reports every camera step, and `onPanDrag` alone misses pinches and twists.
   const gesture = useRef(false);
 
@@ -93,6 +99,8 @@ export function MapView({ ref, children, onPanDrag, onRegionChangeComplete, ...p
       customMapStyle={dark && layers.type === 'default' ? DARK_STYLE : []}
       userInterfaceStyle={dark ? 'dark' : 'light'}
       {...props}
+      mapPadding={ready ? mapPadding : initialPadding}
+      onMapReady={() => setReady(true)}
       onRegionChange={(_region, details) => {
         if (!details?.isGesture || gesture.current) return;
         gesture.current = true;

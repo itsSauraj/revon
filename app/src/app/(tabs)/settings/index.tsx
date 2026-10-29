@@ -16,6 +16,7 @@ import { confirmAction } from '@/lib/dialog';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { stopTracking } from '@/lib/location-task';
 import { hasGoogleKey, MAP_SOURCES, setMapSource, unavailableNote, useMapSource } from '@/lib/map-source';
+import { useNavigating } from '@/lib/nav-state';
 import { saveProfile, signOut, useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
@@ -24,6 +25,8 @@ export default function SettingsScreen() {
   const [saved, setSaved] = useState(false);
   const google = user?.providers.includes('google.com');
   const source = useMapSource();
+  // A running ride view belongs to its source; switching would redraw its route on the other map.
+  const navigating = useNavigating();
 
   const logOut = async () => {
     const ok = await confirmAction({
@@ -72,7 +75,8 @@ export default function SettingsScreen() {
       <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
         {MAP_SOURCES.map((s, i) => {
           const selected = source === s.id;
-          const disabled = s.id === 'google' && !hasGoogleKey;
+          const noKey = s.id === 'google' && !hasGoogleKey;
+          const disabled = noKey || (navigating && !selected);
           const note = unavailableNote(s.id);
           return (
             <PressableScale
@@ -88,9 +92,9 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowValue, { color: theme.text }]}>{s.name}</Text>
                 <Text style={[styles.rowLabel, { color: theme.textSecondary }]}>
-                  {disabled ? 'No Google API key in this build.' : s.summary}
+                  {noKey ? 'No Google API key in this build.' : s.summary}
                 </Text>
-                {!disabled && note && <Text style={[styles.rowLabel, styles.note, { color: theme.text }]}>{note}</Text>}
+                {!noKey && note && <Text style={[styles.rowLabel, styles.note, { color: theme.text }]}>{note}</Text>}
               </View>
               <View style={[styles.radio, { borderColor: selected ? theme.text : theme.border }]}>
                 {selected && <View style={[styles.radioDot, { backgroundColor: theme.text }]} />}
@@ -100,8 +104,9 @@ export default function SettingsScreen() {
         })}
       </View>
       <Text style={[styles.hint, { color: theme.textSecondary }]}>
-        Applies to the map, place search and routing on this phone. Rides work the same either way, and
-        riders in one group can use different sources.
+        {navigating
+          ? 'Finish the current ride view to change the map source.'
+          : 'Applies to the map, place search and routing on this phone. A group ride always shows on the source it was created with.'}
       </Text>
 
       <Button label="Sign out" icon={LuLogOut} onPress={logOut} style={styles.signOut} />

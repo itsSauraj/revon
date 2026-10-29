@@ -1,3 +1,5 @@
+import type { MapSource } from './map-source';
+
 export type LatLng = { latitude: number; longitude: number };
 
 export type Place = LatLng & { name: string; address?: string };
@@ -36,6 +38,12 @@ export type RideMeta = {
   destination: Place;
   route: Route | null;
   avoid: Avoid;
+  /**
+   * Map source the destination and route came from; every rider sees the ride on it, so Google
+   * content never lands on a non-Google map (or OSM data on Google). Rides created before this
+   * field existed were all Google.
+   */
+  mapSource?: MapSource;
   createdAt: number;
   createdBy: string;
   lastActivityAt: number;

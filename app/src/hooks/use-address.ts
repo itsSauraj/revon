@@ -2,23 +2,26 @@ import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { getMapSource } from '@/lib/map-source';
+import { type MapSource, useMapSource } from '@/lib/map-source';
 import { reverseGeocode } from '@/lib/osm';
 import type { LatLng } from '@/lib/types';
 
 /**
- * Street address for a coordinate: the device reverse geocoder on Android/iOS (no extra API), Photon
- * on web when the map source is OpenStreetMap. Falls back to `fallback` when nothing is found.
+ * Street address for a coordinate. OpenStreetMap source: Photon on every platform, so no
+ * Google-backed geocoder feeds that map. Google source: the device geocoder on Android/iOS (web has
+ * none). Falls back to `fallback` when nothing is found.
  */
-export function useAddress(point: LatLng | null, fallback: string) {
+export function useAddress(point: LatLng | null, fallback: string, source?: MapSource) {
+  const setting = useMapSource();
+  const src = source ?? setting;
   const [found, setFound] = useState<{ key: string; text: string } | null>(null);
   const key = point ? `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}` : null;
 
   useEffect(() => {
     if (!point || !key) return;
     let cancelled = false;
-    if (Platform.OS === 'web') {
-      if (getMapSource() !== 'osm') return;
+    if (src === 'osm' || Platform.OS === 'web') {
+      if (src !== 'osm') return;
       reverseGeocode(point)
         .then((line) => {
           if (!cancelled && line) setFound({ key, text: line });
@@ -40,9 +43,9 @@ export function useAddress(point: LatLng | null, fallback: string) {
     return () => {
       cancelled = true;
     };
-    // Re-run only when the coordinate (rounded) changes.
+    // Re-run only when the coordinate (rounded) or the source changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, src]);
 
   return found && found.key === key ? found.text : fallback;
 }
