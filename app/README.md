@@ -268,6 +268,11 @@ keytool -list -v -keystore credentials/revon-release.keystore -alias revon    # 
 Testers install the file with `adb install -r <file>`, or open it on the phone (Android asks once to allow
 installs from that app). Add `-- --no-prebuild` to reuse the current `android/` folder.
 
+When `credentials/revon-release.env` exists, **every local build** (`npm run android:dev` too) is signed
+with the release keystore (`plugins/with-android-signing.js`). That is what makes Google sign-in work in
+dev builds: Google only accepts certificates registered in Firebase, and the standard debug key can't
+be registered for this package. Without the file the template's debug key is used, as before.
+
 ### First launch
 
 The app shows a welcome intro, then sign-in (Google or email), email verification for email accounts,
@@ -396,6 +401,7 @@ Expo Go and the simulator hide exactly the problems that matter.
 | `adb reverse` prints the adb help text | Old adb 1.0.31 on PATH: see [the Windows note](#environment-variables-for-android-builds-one-time). |
 | Search or routes fail with *Google API 400/403* | Places API (New) / Routes API not enabled, or the key is restricted to Android/iOS apps. |
 | Sign-in or SMS errors | See the [backend troubleshooting table](../backend/README.md#troubleshooting). |
+| **Google sign-in fails** in a dev build (`DEVELOPER_ERROR`, the account picker closes at once) | The build is signed with a key Firebase doesn't know. Put the release keystore in `credentials/` (see [Shareable APK](#shareable-apk-local)), then `npx expo prebuild --platform android` and rebuild; or register the build's SHA-1 in Firebase. |
 | *Firebase is not configured* | Missing `app/google-services.json` (rebuild after adding it), or empty `EXPO_PUBLIC_FIREBASE_*` (web). |
 
 ### Checks before committing

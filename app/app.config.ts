@@ -137,6 +137,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // React Native Firebase needs frameworks on iOS and Kotlin >= 2.3 on Android.
     ['expo-build-properties', { ios: { useFrameworks: 'dynamic' }, android: { kotlinVersion: KOTLIN_VERSION } }],
     ['./plugins/with-android-kotlin', { kotlinVersion: KOTLIN_VERSION }],
+    // Local builds sign with the release keystore when credentials/revon-release.env exists, so Google
+    // sign-in works in dev builds too (the debug key can't be registered for this package).
+    './plugins/with-android-signing',
   ],
   experiments: {
     typedRoutes: true,

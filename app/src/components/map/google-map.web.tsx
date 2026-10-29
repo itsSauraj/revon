@@ -81,6 +81,30 @@ function LayersController({ layers }: { layers: MapLayers }) {
   return null;
 }
 
+/** Scroll-wheel zoom and two-finger gestures: the drag event alone would let a pinch fight the follow camera. */
+function GestureController({ onGesture }: { onGesture?: () => void }) {
+  const map = useMap();
+  const latest = useRef(onGesture);
+  useEffect(() => {
+    latest.current = onGesture;
+  });
+  useEffect(() => {
+    if (!map) return;
+    const div = map.getDiv();
+    const onWheel = () => latest.current?.();
+    const onTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) latest.current?.();
+    };
+    div.addEventListener('wheel', onWheel, { passive: true });
+    div.addEventListener('touchstart', onTouch, { passive: true });
+    return () => {
+      div.removeEventListener('wheel', onWheel);
+      div.removeEventListener('touchstart', onTouch);
+    };
+  }, [map]);
+  return null;
+}
+
 function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?: EdgePadding }) {
   const map = useMap();
   // The screen may ask for the camera before the Google map instance exists (e.g. centring on the
@@ -239,6 +263,7 @@ export function MapView({
           }}>
           <CameraController handle={setController} padding={mapPadding} />
           <LayersController layers={layers} />
+          <GestureController onGesture={onPanDrag} />
           {showsUserLocation && me && (
             <AdvancedMarker position={toLiteral(me)} zIndex={50} anchorLeft="-50%" anchorTop="-50%" clickable={false}>
               <div style={userDot} />

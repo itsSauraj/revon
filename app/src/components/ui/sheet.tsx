@@ -294,14 +294,17 @@ export function BottomSheet({
             style,
           ]}>
           {glass && <Glass style={StyleSheet.absoluteFill} />}
-          <View style={{ height: max }}>
+          {/* Until the content has been measured the box takes its natural height: a fixed 0 height
+              collapses flex children on Android/iOS (Yoga has no min-height: auto), so nothing could
+              ever be measured and the sheet would stay below the screen. */}
+          <View style={max > 0 ? { height: max } : undefined}>
             <GestureDetector gesture={pan}>
               <View style={styles.grab}>
                 {handle && <Handle />}
                 {header}
               </View>
             </GestureDetector>
-            <View style={styles.body}>{children}</View>
+            <View style={max > 0 ? styles.body : undefined}>{children}</View>
           </View>
         </View>
       </Animated.View>
@@ -469,7 +472,7 @@ export function SheetModal({
       style={[styles.modalSheet, glass ? styles.shadowGlass : styles.shadow, sheet]}>
       <View
         style={[
-          styles.clip,
+          styles.modalClip,
           { borderTopLeftRadius: radius, borderTopRightRadius: radius, paddingBottom: insets.bottom + 12 },
           !glass && { backgroundColor: theme.surface },
           typeof height === 'number' && { height },
@@ -523,6 +526,10 @@ const styles = StyleSheet.create({
   layer: { zIndex: 10 },
   scrim: { backgroundColor: '#000' },
   modalLayout: { flex: 1, justifyContent: 'flex-end' },
+  // Sized by its content: with `flex: 1` here Yoga collapses the view to its padding inside the
+  // auto-height surface (browsers resolve it to the content height), leaving the sheet mostly
+  // off screen on Android and iOS.
+  modalClip: { overflow: 'hidden' },
   modalSheet: { width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 4 },
   title: { flex: 1 },

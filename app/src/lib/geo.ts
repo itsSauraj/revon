@@ -132,6 +132,31 @@ export function routeLength(route: LatLng[]): number {
   return total;
 }
 
+/** Initial bearing from a to b, degrees clockwise from north (0..360). */
+export function bearing(a: LatLng, b: LatLng): number {
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * Direction of a route from its start, measured over the next `aheadM` metres rather than the first
+ * segment alone, so a short kink doesn't swing the camera. Null for fewer than two points.
+ */
+export function routeBearing(route: LatLng[], aheadM = 40): number | null {
+  if (route.length < 2) return null;
+  let walked = 0;
+  let i = 1;
+  while (i < route.length - 1 && walked + haversine(route[i - 1], route[i]) < aheadM) {
+    walked += haversine(route[i - 1], route[i]);
+    i++;
+  }
+  return bearing(route[0], route[i]);
+}
+
 export function formatDistance(m: number): string {
   const abs = Math.abs(m);
   if (abs < 1000) return `${Math.round(abs)} m`;

@@ -8,6 +8,7 @@ import {
   haversine,
   OFF_ROUTE_GRACE_MS,
   OFF_ROUTE_M,
+  routeBearing,
   routeLength,
   splitRoute,
 } from '@/lib/geo';
@@ -65,7 +66,6 @@ export function useRouteFollow(
   const inflight = useRef(false);
   const lastRequest = useRef(0);
   const offSince = useRef<number | null>(null);
-  const lastHeading = useRef(0);
 
   // Only a route computed for the current target counts.
   const route = routeFor && routeFor.target === target ? routeFor.route : null;
@@ -75,6 +75,14 @@ export function useRouteFollow(
 
   const offRoute = Boolean(split && split.crossM > OFF_ROUTE_M);
   const arrived = Boolean(fix && target && haversine(fix, target) < ARRIVED_M);
+
+  // The rider's heading: course over ground while moving; the road ahead while stopped (a stationary
+  // GPS reports none), so in heading-up mode the route still runs up the screen at a standstill.
+  const aheadBearing = useMemo(() => (split ? routeBearing(split.remaining) : null), [split]);
+  const heading =
+    fix && fix.speed > 1 && fix.heading >= 0 ? fix.heading : (aheadBearing ?? (fix && fix.heading >= 0 ? fix.heading : 0));
+  /** Where the camera points while following: along the heading, or north. */
+  const cameraHeading = northUp ? 0 : heading;
 
   // Fetch the first route, and a new one after riding off it for a while.
   useEffect(() => {
@@ -104,20 +112,20 @@ export function useRouteFollow(
       });
   }, [target, fix, route, split, arrived, avoid]);
 
-  // Camera that follows the rider, heading-up or north-up.
+  // Camera that follows the rider: centred on them, with the route running up the screen (heading-up)
+  // or north at the top (north-up).
   useEffect(() => {
     if (!target || !following || !fix) return;
-    if (fix.speed > 1 && fix.heading >= 0) lastHeading.current = fix.heading;
     map.current?.animateCamera(
       {
         center: { latitude: fix.latitude, longitude: fix.longitude },
-        heading: northUp ? 0 : lastHeading.current,
+        heading: cameraHeading,
         pitch: northUp ? 0 : FOLLOW_PITCH,
         zoom,
       },
       { duration: 900 },
     );
-  }, [fix, following, target, map, northUp, zoom]);
+  }, [fix, following, target, map, northUp, zoom, cameraHeading]);
 
   const fraction = split && geomLen > 0 ? Math.max(0, 1 - split.alongM / geomLen) : 1;
 
@@ -141,6 +149,8 @@ export function useRouteFollow(
     arrived,
     following,
     northUp,
+    heading,
+    cameraHeading,
     /** Compass tap in the ride view: switch between heading-up and north-up, and resume following. */
     toggleNorthUp() {
       setNorthUp((n) => !n);

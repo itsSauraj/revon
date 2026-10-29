@@ -23,6 +23,7 @@ import { LayersSheet } from '@/components/map/layers-sheet';
 import { type MapRef, MapView, Polyline } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
+import { NavPuck } from '@/components/nav/nav-puck';
 import { RecenterButton } from '@/components/nav/recenter-button';
 import { StepsSheet } from '@/components/nav/steps-sheet';
 import { TripCard } from '@/components/nav/trip-card';
@@ -35,6 +36,7 @@ import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { noWebOutline, Size, TextStyles } from '@/constants/theme';
+import { useLiveFix } from '@/hooks/use-live-fix';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
@@ -73,7 +75,10 @@ export default function MapHome() {
   const { profile, uid, error: sessionError } = useSession();
   const map = useRef<MapRef>(null);
 
-  const [me, setMe] = useState<Fix | null>(null);
+  // Live fixes from the device; the quick first locate below fills in until the watch delivers.
+  const [firstFix, setFirstFix] = useState<Fix | null>(null);
+  const live = useLiveFix();
+  const me = live ?? firstFix;
   const [showSteps, setShowSteps] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [navH, setNavH] = useState(110);
@@ -107,7 +112,7 @@ export default function MapHome() {
       const last = await Location.getLastKnownPositionAsync().catch(() => null);
       const pos = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       const p = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-      setMe({ ...p, heading: pos.coords.heading ?? -1, speed: pos.coords.speed ?? -1 });
+      setFirstFix({ ...p, heading: pos.coords.heading ?? -1, speed: pos.coords.speed ?? -1 });
       map.current?.animateToRegion({ ...p, latitudeDelta: 0.05, longitudeDelta: 0.05 }, 600);
     })().catch(() => {});
   }, []);
@@ -205,16 +210,13 @@ export default function MapHome() {
         ref={map}
         style={StyleSheet.absoluteFill}
         initialRegion={FALLBACK_REGION}
-        showsUserLocation
+        // The map's own dot gives way to the navigation puck while riding a route.
+        showsUserLocation={!nav.active}
         mapPadding={{
           top: insets.top + (nav.active ? 220 : 60),
           right: 0,
           bottom: nav.active ? 32 : destination ? 250 : 70,
           left: 0,
-        }}
-        onUserLocationChange={(e) => {
-          const c = e.nativeEvent.coordinate;
-          if (c) setMe({ latitude: c.latitude, longitude: c.longitude, heading: c.heading ?? -1, speed: c.speed ?? -1 });
         }}
         onPanDrag={nav.active ? nav.pause : undefined}
         onRegionChangeComplete={compass.onRegionChangeComplete}
@@ -232,6 +234,8 @@ export default function MapHome() {
               <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} zIndex={1} />
             )}
             <RouteLine coordinates={nav.ahead} width={6} />
+            {/* The arrow points up the screen while following heading-up, and at the real heading otherwise. */}
+            {me && <NavPuck coordinate={me} rotation={nav.heading - (nav.following ? nav.cameraHeading : compass.heading)} />}
           </>
         ) : (
           <RouteLine coordinates={routeCoords} />

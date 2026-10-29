@@ -42,10 +42,12 @@ const DARK_STYLE: MapStyleElement[] = [
 
 const NATIVE_TYPE = { default: 'standard', satellite: 'hybrid', terrain: 'terrain' } as const;
 
-export function MapView({ ref, children, ...props }: MapViewProps) {
+export function MapView({ ref, children, onPanDrag, onRegionChangeComplete, ...props }: MapViewProps) {
   const dark = useColorScheme() === 'dark';
   const layers = useMapLayers();
   const inner = useRef<RNMapView | null>(null);
+  // Once per gesture: the SDK reports every camera step, and `onPanDrag` alone misses pinches and twists.
+  const gesture = useRef(false);
 
   // The contract promises a complete camera; the SDK leaves fields it doesn't know undefined.
   useImperativeHandle(
@@ -90,7 +92,16 @@ export function MapView({ ref, children, ...props }: MapViewProps) {
       // The dark style only applies to the default map; satellite and terrain keep their imagery.
       customMapStyle={dark && layers.type === 'default' ? DARK_STYLE : []}
       userInterfaceStyle={dark ? 'dark' : 'light'}
-      {...props}>
+      {...props}
+      onRegionChange={(_region, details) => {
+        if (!details?.isGesture || gesture.current) return;
+        gesture.current = true;
+        onPanDrag?.();
+      }}
+      onRegionChangeComplete={() => {
+        gesture.current = false;
+        onRegionChangeComplete?.();
+      }}>
       {children}
     </RNMapView>
   );
