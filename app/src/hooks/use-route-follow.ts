@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { MapRef } from '@/components/map/map-view';
+import { computeRoute } from '@/lib/directions';
 import {
   ARRIVED_M,
   decodePolyline,
@@ -10,8 +11,7 @@ import {
   routeLength,
   splitRoute,
 } from '@/lib/geo';
-import { computeRoute, type RouteStep, type RouteWithSteps } from '@/lib/google';
-import type { LatLng, Place } from '@/lib/types';
+import type { LatLng, Place, RouteStep, RouteWithSteps } from '@/lib/types';
 
 /** A GPS fix from the map's user-location event. heading/speed are -1 when unknown. */
 export type Fix = LatLng & { heading: number; speed: number };

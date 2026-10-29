@@ -10,6 +10,7 @@ import { transition } from '@/components/ui/transition';
 import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { type MapLayers, type MapType, setMapLayers, useMapLayers } from '@/lib/map-layers';
+import { MAP_SOURCES, useMapCapabilities, useMapSource } from '@/lib/map-source';
 
 const TYPES: { type: MapType; label: string; icon: IconType }[] = [
   { type: 'default', label: 'Default', icon: LuMap },
@@ -17,11 +18,17 @@ const TYPES: { type: MapType; label: string; icon: IconType }[] = [
   { type: 'terrain', label: 'Terrain', icon: LuMountain },
 ];
 
-const DETAILS: { key: keyof Omit<MapLayers, 'type'>; label: string; icon: IconType; webOnly?: boolean }[] = [
+const DETAILS: { key: keyof Omit<MapLayers, 'type'>; label: string; icon: IconType }[] = [
   { key: 'traffic', label: 'Traffic', icon: LuTrafficCone },
   { key: 'buildings', label: '3D buildings', icon: LuBuilding2 },
-  { key: 'bicycling', label: 'Bicycling', icon: LuBike, webOnly: true },
+  { key: 'bicycling', label: 'Bicycling', icon: LuBike },
 ];
+
+/** Why a tile is greyed out with the current map source (see MAP_CAPABILITIES). */
+const UNAVAILABLE: Record<string, string> = {
+  traffic: 'Google Maps only',
+  bicycling: Platform.OS === 'web' ? 'Not available' : 'Web only',
+};
 
 type Props = { visible: boolean; onDismiss: () => void };
 
@@ -29,6 +36,8 @@ type Props = { visible: boolean; onDismiss: () => void };
 export function LayersSheet({ visible, onDismiss }: Props) {
   const theme = useTheme();
   const layers = useMapLayers();
+  const caps = useMapCapabilities();
+  const source = useMapSource();
 
   // Nothing scrolls inside, so the whole sheet is the drag area.
   return (
@@ -41,6 +50,8 @@ export function LayersSheet({ visible, onDismiss }: Props) {
               label={t.label}
               icon={t.icon}
               selected={layers.type === t.type}
+              disabled={t.type !== 'default' && !caps[t.type]}
+              caption={t.type !== 'default' && !caps[t.type] ? 'Not available' : undefined}
               onPress={() => setMapLayers({ type: t.type })}
             />
           ))}
@@ -49,7 +60,7 @@ export function LayersSheet({ visible, onDismiss }: Props) {
         <Text style={[TextStyles.title, styles.section, { color: theme.text }]}>Map details</Text>
         <View style={styles.row}>
           {DETAILS.map((d) => {
-            const unavailable = d.webOnly && Platform.OS !== 'web';
+            const unavailable = !caps[d.key];
             return (
               <Tile
                 key={d.key}
@@ -57,12 +68,16 @@ export function LayersSheet({ visible, onDismiss }: Props) {
                 icon={d.icon}
                 selected={!unavailable && layers[d.key]}
                 disabled={unavailable}
-                caption={unavailable ? 'Web only' : undefined}
+                caption={unavailable ? (UNAVAILABLE[d.key] ?? 'Not available') : undefined}
                 onPress={() => setMapLayers({ [d.key]: !layers[d.key] })}
               />
             );
           })}
         </View>
+
+        <Text style={[TextStyles.tiny, styles.source, { color: theme.textSecondary }]}>
+          Map data: {MAP_SOURCES.find((s) => s.id === source)?.name}. Change the map source in Settings.
+        </Text>
       </View>
     </SheetModal>
   );
@@ -111,6 +126,7 @@ function Tile({ label, icon, selected, onPress, disabled, caption }: TileProps) 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 6, gap: 10 },
   section: { marginTop: 6 },
+  source: { marginTop: 2 },
   row: { flexDirection: 'row', gap: 10 },
   tile: { flex: 1, alignItems: 'center', gap: 6 },
   tileIcon: {

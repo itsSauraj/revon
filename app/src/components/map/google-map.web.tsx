@@ -1,8 +1,7 @@
 /// <reference types="google.maps" />
 /**
- * Web version of the map components, built on the Google Maps JavaScript API. Implements only the
- * subset of the react-native-maps API that the app uses, with the same prop names, so screens don't
- * need platform checks.
+ * Google Maps backend for web (Google Maps JavaScript API). Implements the map contract in
+ * types.ts; screens import from map-view.tsx and never see this file.
  *
  * Requires "Maps JavaScript API" enabled on the key, and the key must allow the site's referrer
  * (e.g. http://localhost:8081/* during development).
@@ -20,7 +19,6 @@ import {
 import Constants from 'expo-constants';
 import {
   createContext,
-  type ReactNode,
   type Ref,
   useContext,
   useEffect,
@@ -29,17 +27,17 @@ import {
   useRef,
   useState,
 } from 'react';
-import { type StyleProp, View, type ViewStyle } from 'react-native';
+import { View } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { type MapLayers, useMapLayers } from '@/lib/map-layers';
 
+import { type EdgePadding, type MapRef, type MapViewProps, type MarkerProps, type PolylineProps, zoomForDelta } from './types';
+
 const API_KEY: string = Constants.expoConfig?.extra?.googleApiKey ?? '';
 // Advanced markers need a map id; Google's demo id is fine for development.
 const MAP_ID = 'DEMO_MAP_ID';
-
-export const PROVIDER_GOOGLE = 'google';
 
 /** Which marker's label is open; only one at a time, and tapping the map closes it. */
 const OpenLabel = createContext<{ openId: string | null; setOpenId: (id: string | null) => void }>({
@@ -48,21 +46,7 @@ const OpenLabel = createContext<{ openId: string | null; setOpenId: (id: string 
 });
 
 type LatLng = { latitude: number; longitude: number };
-type Region = LatLng & { latitudeDelta: number; longitudeDelta: number };
-type EdgePadding = { top: number; right: number; bottom: number; left: number };
-
-type Camera = { center: LatLng; heading: number; pitch: number; zoom: number };
-
-export type MapRef = {
-  animateToRegion(region: Region, duration?: number): void;
-  animateCamera(camera: Partial<Camera>, opts?: { duration?: number }): void;
-  getCamera(): Promise<Camera>;
-  fitToCoordinates(coordinates?: LatLng[], options?: { edgePadding?: EdgePadding; animated?: boolean }): void;
-};
-
 const toLiteral = (p: LatLng): google.maps.LatLngLiteral => ({ lat: p.latitude, lng: p.longitude });
-const zoomFor = (latitudeDelta: number) =>
-  Math.round(Math.max(2, Math.min(20, Math.log2(360 / Math.max(latitudeDelta, 1e-6)))));
 
 const WEB_TYPE = { default: 'roadmap', satellite: 'hybrid', terrain: 'terrain' } as const;
 
@@ -119,7 +103,7 @@ function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?:
       animateToRegion(region) {
         run((m) => {
           m.panTo(toLiteral(region));
-          m.setZoom(zoomFor(region.latitudeDelta));
+          m.setZoom(zoomForDelta(region.latitudeDelta));
         });
       },
       getCamera() {
@@ -161,25 +145,6 @@ function CameraController({ handle, padding }: { handle?: Ref<MapRef>; padding?:
   );
   return null;
 }
-
-type MapViewProps = {
-  ref?: Ref<MapRef>;
-  style?: StyleProp<ViewStyle>;
-  initialRegion?: Region;
-  showsUserLocation?: boolean;
-  mapPadding?: EdgePadding;
-  onUserLocationChange?: (e: { nativeEvent: { coordinate?: LatLng & { heading: number; speed: number } } }) => void;
-  onLongPress?: (e: { nativeEvent: { coordinate: LatLng } }) => void;
-  onPanDrag?: () => void;
-  /** Fires when the camera settles (pan, zoom, rotate or animation finished). */
-  onRegionChangeComplete?: () => void;
-  children?: ReactNode;
-  // Accepted for parity with react-native-maps; no effect on web.
-  provider?: string;
-  showsMyLocationButton?: boolean;
-  showsCompass?: boolean;
-  toolbarEnabled?: boolean;
-};
 
 export function MapView({
   ref,
@@ -260,7 +225,7 @@ export function MapView({
           onDragstart={() => onPanDrag?.()}
           onIdle={() => onRegionChangeComplete?.()}
           defaultCenter={initialRegion ? toLiteral(initialRegion) : { lat: 20, lng: 0 }}
-          defaultZoom={initialRegion ? zoomFor(initialRegion.latitudeDelta) : 2}
+          defaultZoom={initialRegion ? zoomForDelta(initialRegion.latitudeDelta) : 2}
           disableDefaultUI
           clickableIcons={false}
           gestureHandling="greedy"
@@ -293,20 +258,6 @@ const userDot = {
   background: '#1A73E8',
   border: '3px solid #fff',
   boxShadow: '0 0 0 6px rgba(26,115,232,0.2)',
-};
-
-type MarkerProps = {
-  coordinate: LatLng;
-  title?: string;
-  description?: string;
-  pinColor?: string;
-  anchor?: { x: number; y: number };
-  zIndex?: number;
-  onPress?: () => void;
-  onCalloutPress?: () => void;
-  children?: ReactNode;
-  // Native-only rendering hint.
-  tracksViewChanges?: boolean;
 };
 
 export function Marker({ coordinate, title, description, pinColor, anchor, zIndex, onPress, onCalloutPress, children }: MarkerProps) {
@@ -363,8 +314,6 @@ export function Marker({ coordinate, title, description, pinColor, anchor, zInde
     </AdvancedMarker>
   );
 }
-
-type PolylineProps = { coordinates: LatLng[]; strokeColor?: string; strokeWidth?: number; zIndex?: number };
 
 export function Polyline({ coordinates, strokeColor, strokeWidth, zIndex }: PolylineProps) {
   return (

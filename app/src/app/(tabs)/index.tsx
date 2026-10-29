@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FADE_IN, FADE_OUT } from '@/components/auth/field-motion';
 import { LayersSheet } from '@/components/map/layers-sheet';
-import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { type MapRef, MapView, Polyline } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
 import { RecenterButton } from '@/components/nav/recenter-button';
@@ -40,21 +40,14 @@ import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
 import { centerOn } from '@/lib/camera';
 import { showMessage } from '@/lib/dialog';
+import { computeRoute, openExternalNav } from '@/lib/directions';
 import { decodePolyline, formatDistance, formatDuration } from '@/lib/geo';
-import {
-  computeRoute,
-  newSessionToken,
-  openGoogleMapsNav,
-  placeDetails,
-  placesAutocomplete,
-  type Route,
-  type Suggestion,
-} from '@/lib/google';
 import { startTracking } from '@/lib/location-task';
 import { EASE_OUT, haptic, Timing } from '@/lib/motion';
+import { newSessionToken, resolvePlace, searchPlaces } from '@/lib/places';
 import { checkActiveRide, createRide } from '@/lib/rides';
 import { useSession } from '@/lib/session';
-import type { Place } from '@/lib/types';
+import type { Place, Route, Suggestion } from '@/lib/types';
 
 const FALLBACK_REGION = { latitude: 20, longitude: 0, latitudeDelta: 60, longitudeDelta: 60 };
 
@@ -125,7 +118,7 @@ export default function MapHome() {
   useEffect(() => {
     if (!searching) return;
     const t = setTimeout(() => {
-      placesAutocomplete(query, me, searchToken).then(setSuggestions).catch(() => setSuggestions([]));
+      searchPlaces(query, me, searchToken).then(setSuggestions).catch(() => setSuggestions([]));
     }, 300);
     return () => clearTimeout(t);
     // `me` only biases results; don't re-query on every GPS update.
@@ -168,7 +161,7 @@ export default function MapHome() {
     Keyboard.dismiss();
     setSuggestions([]);
     try {
-      const place = await placeDetails(s.placeId, searchToken);
+      const place = await resolvePlace(s, searchToken);
       setSearchToken(newSessionToken());
       setQuery(place.name);
       setDestination(place);
@@ -210,13 +203,9 @@ export default function MapHome() {
     <View style={styles.screen}>
       <MapView
         ref={map}
-        provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={FALLBACK_REGION}
         showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
         mapPadding={{
           top: insets.top + (nav.active ? 220 : 60),
           right: 0,
@@ -318,7 +307,7 @@ export default function MapHome() {
               <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={[styles.suggestions, { backgroundColor: theme.surface }]}>
                 <FlatList
                   data={visibleSuggestions}
-                  keyExtractor={(s) => s.placeId}
+                  keyExtractor={(s) => s.id}
                   keyboardShouldPersistTaps="handled"
                   style={styles.suggestionList}
                   renderItem={({ item }) => (
@@ -446,7 +435,7 @@ export default function MapHome() {
         visible={showSteps && nav.active}
         steps={nav.route?.steps ?? []}
         onDismiss={() => setShowSteps(false)}
-        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name)}
       />
       <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
     </View>

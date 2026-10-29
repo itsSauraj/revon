@@ -2,6 +2,23 @@ export type LatLng = { latitude: number; longitude: number };
 
 export type Place = LatLng & { name: string; address?: string };
 
+/** Route options every routing provider understands. */
+export type Avoid = { highways: boolean; tolls: boolean };
+
+/** A route as stored with a ride: Google-encoded polyline (precision 5) plus totals. */
+export type Route = { polyline: string; distanceM: number; durationS: number };
+
+/**
+ * One turn. `maneuver` uses the Google Routes names (TURN_LEFT, ROUNDABOUT_RIGHT, …, see
+ * components/nav/maneuver.ts); other providers map their types onto them.
+ */
+export type RouteStep = { instruction: string; maneuver: string; distanceM: number };
+
+export type RouteWithSteps = Route & { steps: RouteStep[] };
+
+/** A place-search result. OpenStreetMap results carry the place; Google needs a details call. */
+export type Suggestion = { id: string; main: string; secondary: string; place?: Place };
+
 export type RiderStatus =
   | 'riding'
   | 'fuel'
@@ -17,8 +34,8 @@ export type RiderRole = 'lead' | 'sweep' | null;
 export type RideMeta = {
   code: string;
   destination: Place;
-  route: { polyline: string; distanceM: number; durationS: number } | null;
-  avoid: { highways: boolean; tolls: boolean };
+  route: Route | null;
+  avoid: Avoid;
   createdAt: number;
   createdBy: string;
   lastActivityAt: number;

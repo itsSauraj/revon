@@ -125,6 +125,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         isAndroidForegroundServiceEnabled: true,
       },
     ],
+    // OpenStreetMap map source (MapLibre Native). Uses MapLibre's own location engine, so the map
+    // also works on phones without Google Play services.
+    '@maplibre/maplibre-react-native',
     ['expo-notifications', { color: '#0A0A0A' }],
     // Native Firebase (auth incl. phone OTP, Realtime Database) and Google Sign-In. Only added when
     // the Firebase config file exists, since their config plugins require it.

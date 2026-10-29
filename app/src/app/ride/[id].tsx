@@ -19,7 +19,7 @@ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanima
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LayersSheet } from '@/components/map/layers-sheet';
-import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { type MapRef, MapView, Polyline } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
 import { RecenterButton } from '@/components/nav/recenter-button';
@@ -44,7 +44,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { clearBanners, setupNotifications } from '@/lib/alerts';
 import { centerOn } from '@/lib/camera';
 import { confirmAction, shareText } from '@/lib/dialog';
-import { openGoogleMapsNav } from '@/lib/google';
+import { openExternalNav } from '@/lib/directions';
 import { getActiveRideId, isTracking, startTracking, stopTracking, type TrackingMode } from '@/lib/location-task';
 import { haptic } from '@/lib/motion';
 import {
@@ -228,13 +228,9 @@ export default function RideScreen() {
     <View style={styles.screen}>
       <MapView
         ref={map}
-        provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={{ ...meta.destination, latitudeDelta: 0.3, longitudeDelta: 0.3 }}
         showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
         // In the ride view, a larger top inset puts the rider lower on screen to show more road ahead.
         // The bottom inset is the panel's settled height, so the map never re-pads mid-drag.
         mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH, left: 0 }}
@@ -418,7 +414,7 @@ export default function RideScreen() {
         visible={showSteps && nav.active}
         steps={nav.route?.steps ?? []}
         onDismiss={() => setShowSteps(false)}
-        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name)}
       />
       <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
     </View>

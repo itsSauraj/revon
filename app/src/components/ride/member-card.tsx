@@ -9,8 +9,8 @@ import { SheetModal } from '@/components/ui/sheet';
 import { Size, TextStyles } from '@/constants/theme';
 import type { Rider } from '@/hooks/use-ride';
 import { useTheme } from '@/hooks/use-theme';
+import { computeRoute } from '@/lib/directions';
 import { formatDistance, formatDuration, formatSpeed, haversine } from '@/lib/geo';
-import { computeRoute } from '@/lib/google';
 import type { LatLng, Place } from '@/lib/types';
 
 import { initials, STATUS_META } from './status';

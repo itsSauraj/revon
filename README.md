@@ -9,7 +9,8 @@ over to check a chat app or call around.
 ## Features
 
 **Map**
-- Full-screen Google Maps with place search (Places API) and long-press to drop a pin
+- Full-screen map with place search and long-press to drop a pin, on **Google Maps** or **OpenStreetMap**
+  (MapLibre, Photon, Valhalla), chosen in Settings
 - Route preview with distance and time, with options to avoid highways and tolls
 - Two-wheeler routing where Google supports it, otherwise driving
 - **In-app ride view**: next-turn card (turn arrow, live distance to the turn, street), time/distance left and
