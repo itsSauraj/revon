@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { IconType } from 'react-icons';
 import { LuBike, LuBuilding2, LuMap, LuMountain, LuSatellite, LuTrafficCone } from 'react-icons/lu';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
@@ -10,7 +10,7 @@ import { transition } from '@/components/ui/transition';
 import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { type MapLayers, type MapType, setMapLayers, useMapLayers } from '@/lib/map-layers';
-import { MAP_SOURCES, useMapCapabilities, useMapSource } from '@/lib/map-source';
+import { MAP_SOURCES, unavailableNote, useMapCapabilities, useMapSource } from '@/lib/map-source';
 
 const TYPES: { type: MapType; label: string; icon: IconType }[] = [
   { type: 'default', label: 'Default', icon: LuMap },
@@ -24,62 +24,81 @@ const DETAILS: { key: keyof Omit<MapLayers, 'type'>; label: string; icon: IconTy
   { key: 'bicycling', label: 'Bicycling', icon: LuBike },
 ];
 
-/** Why a tile is greyed out with the current map source (see MAP_CAPABILITIES). */
-const UNAVAILABLE: Record<string, string> = {
-  traffic: 'Google Maps only',
-  bicycling: Platform.OS === 'web' ? 'Not available' : 'Web only',
-};
+/** Tiles per row; rows with fewer options keep the same tile size. */
+const COLUMNS = 3;
 
 type Props = { visible: boolean; onDismiss: () => void };
 
-/** Map type and map details picker, like the Layers sheet in Google Maps. Keep mounted; flip `visible`. */
+/**
+ * Map type and map details picker, like the Layers sheet in Google Maps. Only what the current map
+ * source can draw is offered (see MAP_CAPABILITIES), and a note says what it can't, so nothing on the
+ * sheet is a dead end. Keep mounted; flip `visible`.
+ */
 export function LayersSheet({ visible, onDismiss }: Props) {
   const theme = useTheme();
   const layers = useMapLayers();
   const caps = useMapCapabilities();
   const source = useMapSource();
 
+  const types = TYPES.filter((t) => t.type === 'default' || caps[t.type]);
+  const details = DETAILS.filter((d) => caps[d.key]);
+  // A type saved under the other source may not exist here; the map then shows the default.
+  const activeType = layers.type !== 'default' && !caps[layers.type] ? 'default' : layers.type;
+  const note = unavailableNote(source);
+  const sourceName = MAP_SOURCES.find((s) => s.id === source)?.name;
+
   // Nothing scrolls inside, so the whole sheet is the drag area.
   return (
     <SheetModal visible={visible} onDismiss={onDismiss} title="Map type" dragArea="sheet">
       <View style={styles.content}>
         <View style={styles.row}>
-          {TYPES.map((t) => (
+          {types.map((t) => (
             <Tile
               key={t.type}
               label={t.label}
               icon={t.icon}
-              selected={layers.type === t.type}
-              disabled={t.type !== 'default' && !caps[t.type]}
-              caption={t.type !== 'default' && !caps[t.type] ? 'Not available' : undefined}
+              selected={activeType === t.type}
               onPress={() => setMapLayers({ type: t.type })}
             />
           ))}
+          <Fillers count={COLUMNS - types.length} />
         </View>
 
-        <Text style={[TextStyles.title, styles.section, { color: theme.text }]}>Map details</Text>
-        <View style={styles.row}>
-          {DETAILS.map((d) => {
-            const unavailable = !caps[d.key];
-            return (
-              <Tile
-                key={d.key}
-                label={d.label}
-                icon={d.icon}
-                selected={!unavailable && layers[d.key]}
-                disabled={unavailable}
-                caption={unavailable ? (UNAVAILABLE[d.key] ?? 'Not available') : undefined}
-                onPress={() => setMapLayers({ [d.key]: !layers[d.key] })}
-              />
-            );
-          })}
-        </View>
+        {details.length > 0 && (
+          <>
+            <Text style={[TextStyles.title, styles.section, { color: theme.text }]}>Map details</Text>
+            <View style={styles.row}>
+              {details.map((d) => (
+                <Tile
+                  key={d.key}
+                  label={d.label}
+                  icon={d.icon}
+                  selected={layers[d.key]}
+                  onPress={() => setMapLayers({ [d.key]: !layers[d.key] })}
+                />
+              ))}
+              <Fillers count={COLUMNS - details.length} />
+            </View>
+          </>
+        )}
 
         <Text style={[TextStyles.tiny, styles.source, { color: theme.textSecondary }]}>
-          Map data: {MAP_SOURCES.find((s) => s.id === source)?.name}. Change the map source in Settings.
+          Map data: {sourceName}.{note ? ` ${note}` : ''} Change the map source in Settings.
         </Text>
       </View>
     </SheetModal>
+  );
+}
+
+/** Empty slots that keep a short row's tiles the same width as a full one. */
+function Fillers({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <View key={i} style={styles.tile} />
+      ))}
+    </>
   );
 }
 
@@ -88,22 +107,14 @@ type TileProps = {
   icon: IconType;
   selected: boolean;
   onPress: () => void;
-  disabled?: boolean;
-  caption?: string;
 };
 
 /** Selected tiles invert (monochrome), with the colours crossing over in a CSS transition. */
-function Tile({ label, icon, selected, onPress, disabled, caption }: TileProps) {
+function Tile({ label, icon, selected, onPress }: TileProps) {
   const theme = useTheme();
   const reduced = useReducedMotion();
   return (
-    <PressableScale
-      accessibilityLabel={label}
-      accessibilityState={{ selected, disabled }}
-      disabled={disabled}
-      haptic="selection"
-      onPress={onPress}
-      style={styles.tile}>
+    <PressableScale accessibilityLabel={label} accessibilityState={{ selected }} haptic="selection" onPress={onPress} style={styles.tile}>
       <Animated.View
         style={[
           styles.tileIcon,
@@ -118,7 +129,6 @@ function Tile({ label, icon, selected, onPress, disabled, caption }: TileProps) 
       <Text style={[TextStyles.label, { color: theme.text }]} numberOfLines={1}>
         {label}
       </Text>
-      {caption && <Text style={[TextStyles.tiny, styles.caption, { color: theme.textSecondary }]}>{caption}</Text>}
     </PressableScale>
   );
 }
@@ -137,5 +147,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  caption: { marginTop: -4 },
 });

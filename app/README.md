@@ -139,6 +139,8 @@ Then create a key under **APIs & Services → Credentials → Create credentials
 
 The map, place search and routing come from one of two stacks, chosen per phone in **Settings → Map**.
 Rides don't care which: routes are stored the same way, and riders in one group can mix sources.
+Options a source can't offer (traffic on OpenStreetMap, the bicycling layer on Google's mobile SDKs)
+are left out of the layers sheet, and both the sheet and the Settings picker say so.
 
 | | Google Maps | OpenStreetMap |
 |---|---|---|

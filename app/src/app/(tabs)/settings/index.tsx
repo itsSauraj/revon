@@ -15,7 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { confirmAction } from '@/lib/dialog';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { stopTracking } from '@/lib/location-task';
-import { hasGoogleKey, MAP_SOURCES, setMapSource, useMapSource } from '@/lib/map-source';
+import { hasGoogleKey, MAP_SOURCES, setMapSource, unavailableNote, useMapSource } from '@/lib/map-source';
 import { saveProfile, signOut, useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
@@ -73,6 +73,7 @@ export default function SettingsScreen() {
         {MAP_SOURCES.map((s, i) => {
           const selected = source === s.id;
           const disabled = s.id === 'google' && !hasGoogleKey;
+          const note = unavailableNote(s.id);
           return (
             <PressableScale
               key={s.id}
@@ -89,6 +90,7 @@ export default function SettingsScreen() {
                 <Text style={[styles.rowLabel, { color: theme.textSecondary }]}>
                   {disabled ? 'No Google API key in this build.' : s.summary}
                 </Text>
+                {!disabled && note && <Text style={[styles.rowLabel, styles.note, { color: theme.text }]}>{note}</Text>}
               </View>
               <View style={[styles.radio, { borderColor: selected ? theme.text : theme.border }]}>
                 {selected && <View style={[styles.radioDot, { backgroundColor: theme.text }]} />}
@@ -145,6 +147,7 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: Type.small + 1, fontWeight: '600' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 7, height: 22 },
   badgeText: { fontSize: Type.tiny, fontWeight: '700' },
+  note: { marginTop: 2, fontWeight: '600' },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 10, height: 10, borderRadius: 5 },
   signOut: { marginTop: 8 },
