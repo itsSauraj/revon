@@ -9,7 +9,11 @@
  */
 export type OsmStyle = {
   url: string;
-  /** First label layer of the style: overlays are inserted beneath it so names stay readable. */
+  /**
+   * Layer the overlays are inserted beneath: the first label layer above every road, building and
+   * area layer, so imagery covers the base map while street and place names stay readable. (The
+   * first symbol layer of each style is too low: both styles interleave roads and labels.)
+   */
   labelsBeforeId: string;
   /** Whether the style already extrudes buildings at high zoom (then only the tilt is needed). */
   has3dBuildings: boolean;
@@ -17,8 +21,8 @@ export type OsmStyle = {
 
 /** OpenFreeMap styles (OpenMapTiles schema, source id `openmaptiles`). */
 export const OSM_STYLES: Record<'light' | 'dark', OsmStyle> = {
-  light: { url: 'https://tiles.openfreemap.org/styles/liberty', labelsBeforeId: 'road_one_way_arrow', has3dBuildings: true },
-  dark: { url: 'https://tiles.openfreemap.org/styles/dark', labelsBeforeId: 'water_name', has3dBuildings: false },
+  light: { url: 'https://tiles.openfreemap.org/styles/liberty', labelsBeforeId: 'waterway_line_label', has3dBuildings: true },
+  dark: { url: 'https://tiles.openfreemap.org/styles/dark', labelsBeforeId: 'highway_name_other', has3dBuildings: false },
 };
 
 export const OSM_ATTRIBUTION = '© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors';
