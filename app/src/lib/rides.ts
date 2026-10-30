@@ -1,3 +1,4 @@
+import { getMapSource } from './map-source';
 import { db, get, push, ref, serverTimestamp, update } from './db';
 import { getActiveRide, stopTracking } from './location-task';
 
@@ -68,6 +69,7 @@ export async function createRide(opts: {
       lastActivityAt: now,
       locked: false,
       endedAt: null,
+      mapSource: getMapSource(),
     };
     try {
       await update(ref(db), {

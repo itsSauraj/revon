@@ -1,116 +1,48 @@
 /**
- * Map components used by the app. On Android and iOS these wrap react-native-maps (Google provider);
- * on web, map-view.web.tsx provides the same subset on top of the Google Maps JavaScript API.
+ * The app's map. Picks a backend for the rider's map source setting (Settings → Map):
  *
- * The map follows the app theme (dark map style in dark mode), and marker labels use a themed
- * callout instead of the default white bubble.
+ * - google: react-native-maps on Android/iOS, Google Maps JavaScript API on web (google-map.tsx)
+ * - osm: MapLibre Native on Android/iOS, MapLibre GL JS on web (osm-map.tsx)
+ *
+ * Screens import MapView, Marker and Polyline from here and the imperative MapRef; the contract is
+ * in types.ts. Changing the source remounts the map with the other backend; everything else (rides,
+ * riders, routes, alerts) is unaware of it.
  */
-import { type Ref, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import RNMapView, {
-  Callout,
-  type MapMarkerProps,
-  type MapStyleElement,
-  type MapViewProps,
-  Marker as RNMarker,
-} from 'react-native-maps';
+import { createContext, useContext } from 'react';
 
-import { Size, Type } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useTheme } from '@/hooks/use-theme';
-import { useMapLayers } from '@/lib/map-layers';
+import { type MapSource, useMapSource } from '@/lib/map-source';
 
-export { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Google from './google-map';
+import * as Osm from './osm-map';
+import type { MapViewProps, MarkerProps, PolylineProps } from './types';
 
-/** Imperative map handle (animateToRegion, animateCamera, fitToCoordinates). */
-export type MapRef = RNMapView;
+/** The source the enclosing MapView draws with, so its markers and lines use the same backend. */
+const SourceContext = createContext<MapSource | null>(null);
 
-// Monochrome dark style for Google Maps.
-const DARK_STYLE: MapStyleElement[] = [
-  { elementType: 'geometry', stylers: [{ color: '#151515' }] },
-  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#8A8A8A' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#151515' }] },
-  { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#2A2A2A' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1C1C1C' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1A1E1A' }] },
-  { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#2C2C2C' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1F1F1F' }] },
-  { featureType: 'road.highway', elementType: 'geometry.fill', stylers: [{ color: '#3A3A3A' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9A9A9A' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#202020' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0B0B0B' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4A4A4A' }] },
-];
+function useBackend(explicit?: MapSource) {
+  const setting = useMapSource();
+  const enclosing = useContext(SourceContext);
+  const source = explicit ?? enclosing ?? setting;
+  return { source, Backend: source === 'osm' ? Osm : Google };
+}
 
-const NATIVE_TYPE = { default: 'standard', satellite: 'hybrid', terrain: 'terrain' } as const;
+export type { Camera, EdgePadding, MapRef, MapViewProps, MarkerProps, PolylineProps, Region } from './types';
 
-export function MapView({ ref, ...props }: MapViewProps & { ref?: Ref<RNMapView> }) {
-  const dark = useColorScheme() === 'dark';
-  const layers = useMapLayers();
-  const inner = useRef<RNMapView | null>(null);
-
-  // 3D buildings only show when the map is tilted, so tilt when they're switched on.
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    inner.current?.animateCamera({ pitch: layers.buildings ? 45 : 0 }, { duration: 500 });
-  }, [layers.buildings]);
-
+export function MapView({ source: explicit, children, ...props }: MapViewProps) {
+  const { source, Backend } = useBackend(explicit);
   return (
-    <RNMapView
-      ref={(r) => {
-        inner.current = r;
-        if (typeof ref === 'function') ref(r);
-        else if (ref) ref.current = r;
-      }}
-      mapType={NATIVE_TYPE[layers.type]}
-      showsTraffic={layers.traffic}
-      showsBuildings={layers.buildings}
-      // The dark style only applies to the default map; satellite and terrain keep their imagery.
-      customMapStyle={dark && layers.type === 'default' ? DARK_STYLE : []}
-      userInterfaceStyle={dark ? 'dark' : 'light'}
-      {...props}
-    />
+    <SourceContext.Provider value={source}>
+      <Backend.MapView {...props}>{children}</Backend.MapView>
+    </SourceContext.Provider>
   );
 }
 
-/** Marker whose title/description show in a small themed label instead of the default bubble. */
-export function Marker({ title, description, onCalloutPress, children, ...props }: MapMarkerProps) {
-  const theme = useTheme();
-  return (
-    <RNMarker {...props}>
-      {children}
-      {title ? (
-        <Callout tooltip onPress={onCalloutPress}>
-          <View style={[styles.label, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
-              {title}
-            </Text>
-            {description ? (
-              <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={1}>
-                {description}
-              </Text>
-            ) : null}
-          </View>
-        </Callout>
-      ) : null}
-    </RNMarker>
-  );
+export function Marker(props: MarkerProps) {
+  const { Backend } = useBackend();
+  return <Backend.Marker {...props} />;
 }
 
-const styles = StyleSheet.create({
-  label: {
-    maxWidth: 220,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Size.radius - 2,
-    borderWidth: 1,
-    marginBottom: 6,
-  },
-  title: { fontSize: Type.small, fontWeight: '600' },
-  description: { fontSize: Type.tiny },
-});
+export function Polyline(props: PolylineProps) {
+  const { Backend } = useBackend();
+  return <Backend.Polyline {...props} />;
+}

@@ -18,8 +18,12 @@ export function haversine(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** Decodes a Google encoded polyline (precision 5). */
-export function decodePolyline(encoded: string): LatLng[] {
+/**
+ * Decodes a Google encoded polyline. Routes are stored at precision 5 (Google, OSRM); Valhalla
+ * emits precision 6, which callers decode with `precision = 6` and re-encode at 5 before saving.
+ */
+export function decodePolyline(encoded: string, precision = 5): LatLng[] {
+  const factor = 10 ** precision;
   const points: LatLng[] = [];
   let index = 0;
   let lat = 0;
@@ -38,9 +42,36 @@ export function decodePolyline(encoded: string): LatLng[] {
       if (axis === 0) lat += delta;
       else lng += delta;
     }
-    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+    points.push({ latitude: lat / factor, longitude: lng / factor });
   }
   return points;
+}
+
+/** One signed delta in the Google polyline algorithm: zig-zag sign bit, then 5-bit chunks. */
+function encodeDelta(delta: number): string {
+  let value = delta < 0 ? ~(delta << 1) : delta << 1;
+  let out = '';
+  while (value >= 0x20) {
+    out += String.fromCharCode((0x20 | (value & 0x1f)) + 63);
+    value >>= 5;
+  }
+  return out + String.fromCharCode(value + 63);
+}
+
+/** Encodes points as a Google encoded polyline, the inverse of `decodePolyline`. */
+export function encodePolyline(points: LatLng[], precision = 5): string {
+  const factor = 10 ** precision;
+  let out = '';
+  let prevLat = 0;
+  let prevLng = 0;
+  for (const p of points) {
+    const lat = Math.round(p.latitude * factor);
+    const lng = Math.round(p.longitude * factor);
+    out += encodeDelta(lat - prevLat) + encodeDelta(lng - prevLng);
+    prevLat = lat;
+    prevLng = lng;
+  }
+  return out;
 }
 
 export type Projection = {
@@ -99,6 +130,31 @@ export function routeLength(route: LatLng[]): number {
   let total = 0;
   for (let i = 0; i < route.length - 1; i++) total += haversine(route[i], route[i + 1]);
   return total;
+}
+
+/** Initial bearing from a to b, degrees clockwise from north (0..360). */
+export function bearing(a: LatLng, b: LatLng): number {
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * Direction of a route from its start, measured over the next `aheadM` metres rather than the first
+ * segment alone, so a short kink doesn't swing the camera. Null for fewer than two points.
+ */
+export function routeBearing(route: LatLng[], aheadM = 40): number | null {
+  if (route.length < 2) return null;
+  let walked = 0;
+  let i = 1;
+  while (i < route.length - 1 && walked + haversine(route[i - 1], route[i]) < aheadM) {
+    walked += haversine(route[i - 1], route[i]);
+    i++;
+  }
+  return bearing(route[0], route[i]);
 }
 
 export function formatDistance(m: number): string {

@@ -125,6 +125,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         isAndroidForegroundServiceEnabled: true,
       },
     ],
+    // OpenStreetMap map source (MapLibre Native). Uses MapLibre's own location engine, so the map
+    // also works on phones without Google Play services.
+    '@maplibre/maplibre-react-native',
     ['expo-notifications', { color: '#0A0A0A' }],
     // Native Firebase (auth incl. phone OTP, Realtime Database) and Google Sign-In. Only added when
     // the Firebase config file exists, since their config plugins require it.
@@ -134,6 +137,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // React Native Firebase needs frameworks on iOS and Kotlin >= 2.3 on Android.
     ['expo-build-properties', { ios: { useFrameworks: 'dynamic' }, android: { kotlinVersion: KOTLIN_VERSION } }],
     ['./plugins/with-android-kotlin', { kotlinVersion: KOTLIN_VERSION }],
+    // Local builds sign with the release keystore when credentials/revon-release.env exists, so Google
+    // sign-in works in dev builds too (the debug key can't be registered for this package).
+    './plugins/with-android-signing',
   ],
   experiments: {
     typedRoutes: true,

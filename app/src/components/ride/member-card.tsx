@@ -9,8 +9,9 @@ import { SheetModal } from '@/components/ui/sheet';
 import { Size, TextStyles } from '@/constants/theme';
 import type { Rider } from '@/hooks/use-ride';
 import { useTheme } from '@/hooks/use-theme';
+import { computeRoute } from '@/lib/directions';
 import { formatDistance, formatDuration, formatSpeed, haversine } from '@/lib/geo';
-import { computeRoute } from '@/lib/google';
+import type { MapSource } from '@/lib/map-source';
 import type { LatLng, Place } from '@/lib/types';
 
 import { initials, STATUS_META } from './status';
@@ -23,10 +24,12 @@ type Props = {
   onClose: () => void;
   /** Opens the in-app ride view towards this rider. */
   onNavigate: (to: Place) => void;
+  /** Routing source for the road ETA: the ride's, so it matches the map it is shown on. */
+  source?: MapSource;
 };
 
 /** Modal sheet for one rider: status, live stats, call and navigate. */
-export function MemberCard({ rider, myPosition, isMe, onClose, onNavigate }: Props) {
+export function MemberCard({ rider, myPosition, isMe, onClose, onNavigate, source }: Props) {
   const theme = useTheme();
   const [etaFor, setEtaFor] = useState<{ uid: string; text: string } | null>(null);
   // The sheet animates out after `rider` is cleared, so keep showing the last rider until it has.
@@ -39,7 +42,7 @@ export function MemberCard({ rider, myPosition, isMe, onClose, onNavigate }: Pro
     if (!rider || !target || !myPosition || isMe) return;
     const uid = rider.uid;
     let cancelled = false;
-    computeRoute(myPosition, target)
+    computeRoute(myPosition, target, undefined, false, source)
       .then((r) => {
         if (!cancelled && r) {
           setEtaFor({ uid, text: `${formatDuration(r.durationS)} · ${formatDistance(r.distanceM)} by road` });

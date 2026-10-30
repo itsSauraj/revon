@@ -4,16 +4,19 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { IconType } from 'react-icons';
 import { FcGoogle } from 'react-icons/fc';
-import { LuLogOut, LuMail, LuPhone, LuShieldCheck } from 'react-icons/lu';
+import { LuGlobe, LuLogOut, LuMail, LuMap, LuPhone, LuShieldCheck } from 'react-icons/lu';
 
 import { ProfileForm } from '@/components/profile-form';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Size, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { confirmAction } from '@/lib/dialog';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { stopTracking } from '@/lib/location-task';
+import { hasGoogleKey, MAP_SOURCES, setMapSource, unavailableNote, useMapSource } from '@/lib/map-source';
+import { useNavigating } from '@/lib/nav-state';
 import { saveProfile, signOut, useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
@@ -21,6 +24,9 @@ export default function SettingsScreen() {
   const { profile, user, error } = useSession();
   const [saved, setSaved] = useState(false);
   const google = user?.providers.includes('google.com');
+  const source = useMapSource();
+  // A running ride view belongs to its source; switching would redraw its route on the other map.
+  const navigating = useNavigating();
 
   const logOut = async () => {
     const ok = await confirmAction({
@@ -65,6 +71,44 @@ export default function SettingsScreen() {
       />
       <Text style={[styles.hint, { color: theme.textSecondary }]}>Changes apply to rides you start or join from now on.</Text>
 
+      <Text style={[styles.section, { color: theme.text }]}>Map</Text>
+      <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+        {MAP_SOURCES.map((s, i) => {
+          const selected = source === s.id;
+          const noKey = s.id === 'google' && !hasGoogleKey;
+          const disabled = noKey || (navigating && !selected);
+          const note = unavailableNote(s.id);
+          return (
+            <PressableScale
+              key={s.id}
+              accessibilityRole="radio"
+              accessibilityLabel={s.name}
+              accessibilityState={{ selected, disabled }}
+              disabled={disabled}
+              haptic="selection"
+              onPress={() => setMapSource(s.id)}
+              style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border }]}>
+              <Icon icon={s.id === 'google' ? LuMap : LuGlobe} size={Size.iconSm} color={theme.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowValue, { color: theme.text }]}>{s.name}</Text>
+                <Text style={[styles.rowLabel, { color: theme.textSecondary }]}>
+                  {noKey ? 'No Google API key in this build.' : s.summary}
+                </Text>
+                {!noKey && note && <Text style={[styles.rowLabel, styles.note, { color: theme.text }]}>{note}</Text>}
+              </View>
+              <View style={[styles.radio, { borderColor: selected ? theme.text : theme.border }]}>
+                {selected && <View style={[styles.radioDot, { backgroundColor: theme.text }]} />}
+              </View>
+            </PressableScale>
+          );
+        })}
+      </View>
+      <Text style={[styles.hint, { color: theme.textSecondary }]}>
+        {navigating
+          ? 'Finish the current ride view to change the map source.'
+          : 'Applies to the map, place search and routing on this phone. A group ride always shows on the source it was created with.'}
+      </Text>
+
       <Button label="Sign out" icon={LuLogOut} onPress={logOut} style={styles.signOut} />
 
       <Text style={[styles.section, { color: theme.text }]}>About</Text>
@@ -108,5 +152,8 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: Type.small + 1, fontWeight: '600' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 7, height: 22 },
   badgeText: { fontSize: Type.tiny, fontWeight: '700' },
+  note: { marginTop: 2, fontWeight: '600' },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
   signOut: { marginTop: 8 },
 });

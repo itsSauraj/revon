@@ -1,17 +1,20 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import type { MapRef } from '@/components/map/map-view';
+import { computeRoute } from '@/lib/directions';
+import type { MapSource } from '@/lib/map-source';
+import { setNavigating } from '@/lib/nav-state';
 import {
   ARRIVED_M,
   decodePolyline,
   haversine,
   OFF_ROUTE_GRACE_MS,
   OFF_ROUTE_M,
+  routeBearing,
   routeLength,
   splitRoute,
 } from '@/lib/geo';
-import { computeRoute, type RouteStep, type RouteWithSteps } from '@/lib/google';
-import type { LatLng, Place } from '@/lib/types';
+import type { LatLng, Place, RouteStep, RouteWithSteps } from '@/lib/types';
 
 /** A GPS fix from the map's user-location event. heading/speed are -1 when unknown. */
 export type Fix = LatLng & { heading: number; speed: number };
@@ -51,7 +54,10 @@ export function useRouteFollow(
   map: RefObject<MapRef | null>,
   fix: Fix | null,
   avoid?: { highways: boolean; tolls: boolean },
+  /** Routing source; defaults to the rider's setting. A ride passes the source it was created with. */
+  source?: MapSource,
 ) {
+  const id = useId();
   const [target, setTarget] = useState<Place | null>(null);
   const [routeFor, setRouteFor] = useState<{ target: Place; route: RouteWithSteps | null } | null>(null);
   const [following, setFollowing] = useState(true);
@@ -65,7 +71,6 @@ export function useRouteFollow(
   const inflight = useRef(false);
   const lastRequest = useRef(0);
   const offSince = useRef<number | null>(null);
-  const lastHeading = useRef(0);
 
   // Only a route computed for the current target counts.
   const route = routeFor && routeFor.target === target ? routeFor.route : null;
@@ -75,6 +80,20 @@ export function useRouteFollow(
 
   const offRoute = Boolean(split && split.crossM > OFF_ROUTE_M);
   const arrived = Boolean(fix && target && haversine(fix, target) < ARRIVED_M);
+
+  // Settings locks the map source while any ride view runs (the route belongs to its source).
+  useEffect(() => {
+    setNavigating(id, Boolean(target));
+    return () => setNavigating(id, false);
+  }, [id, target]);
+
+  // The rider's heading: course over ground while moving; the road ahead while stopped (a stationary
+  // GPS reports none), so in heading-up mode the route still runs up the screen at a standstill.
+  const aheadBearing = useMemo(() => (split ? routeBearing(split.remaining) : null), [split]);
+  const heading =
+    fix && fix.speed > 1 && fix.heading >= 0 ? fix.heading : (aheadBearing ?? (fix && fix.heading >= 0 ? fix.heading : 0));
+  /** Where the camera points while following: along the heading, or north. */
+  const cameraHeading = northUp ? 0 : heading;
 
   // Fetch the first route, and a new one after riding off it for a while.
   useEffect(() => {
@@ -92,7 +111,7 @@ export function useRouteFollow(
     inflight.current = true;
     lastRequest.current = now;
     const forTarget = target;
-    computeRoute(fix, forTarget, avoid, true)
+    computeRoute(fix, forTarget, avoid, true, source)
       .then((r) => {
         setRouteFor({ target: forTarget, route: r });
         setError(r ? null : 'No route found');
@@ -102,22 +121,22 @@ export function useRouteFollow(
         inflight.current = false;
         offSince.current = null;
       });
-  }, [target, fix, route, split, arrived, avoid]);
+  }, [target, fix, route, split, arrived, avoid, source]);
 
-  // Camera that follows the rider, heading-up or north-up.
+  // Camera that follows the rider: centred on them, with the route running up the screen (heading-up)
+  // or north at the top (north-up).
   useEffect(() => {
     if (!target || !following || !fix) return;
-    if (fix.speed > 1 && fix.heading >= 0) lastHeading.current = fix.heading;
     map.current?.animateCamera(
       {
         center: { latitude: fix.latitude, longitude: fix.longitude },
-        heading: northUp ? 0 : lastHeading.current,
+        heading: cameraHeading,
         pitch: northUp ? 0 : FOLLOW_PITCH,
         zoom,
       },
       { duration: 900 },
     );
-  }, [fix, following, target, map, northUp, zoom]);
+  }, [fix, following, target, map, northUp, zoom, cameraHeading]);
 
   const fraction = split && geomLen > 0 ? Math.max(0, 1 - split.alongM / geomLen) : 1;
 
@@ -141,6 +160,8 @@ export function useRouteFollow(
     arrived,
     following,
     northUp,
+    heading,
+    cameraHeading,
     /** Compass tap in the ride view: switch between heading-up and north-up, and resume following. */
     toggleNorthUp() {
       setNorthUp((n) => !n);

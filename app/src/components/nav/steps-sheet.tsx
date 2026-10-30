@@ -6,8 +6,10 @@ import { Icon } from '@/components/ui/icon';
 import { SheetModal } from '@/components/ui/sheet';
 import { Size, TextStyles } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { externalNavName } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
-import type { RouteStep } from '@/lib/google';
+import type { MapSource } from '@/lib/map-source';
+import type { RouteStep } from '@/lib/types';
 
 import { maneuverIcon } from './maneuver';
 
@@ -15,12 +17,14 @@ type Props = {
   steps: RouteStep[];
   visible: boolean;
   onDismiss: () => void;
-  /** Optional hand-off for riders who want spoken guidance. */
-  onOpenGoogleMaps?: () => void;
+  /** Optional hand-off to an installed maps app for riders who want spoken guidance. */
+  onOpenExternal?: () => void;
+  /** Source the route came from (defaults to the rider's setting); names the hand-off app. */
+  source?: MapSource;
 };
 
 /** The full list of directions for the current route. Keep mounted; flip `visible`. */
-export function StepsSheet({ steps, visible, onDismiss, onOpenGoogleMaps }: Props) {
+export function StepsSheet({ steps, visible, onDismiss, onOpenExternal, source }: Props) {
   const theme = useTheme();
   const { height: windowH } = useWindowDimensions();
 
@@ -48,9 +52,9 @@ export function StepsSheet({ steps, visible, onDismiss, onOpenGoogleMaps }: Prop
         )}
         ListEmptyComponent={<Text style={[TextStyles.small, { color: theme.textSecondary }]}>No directions for this route.</Text>}
       />
-      {onOpenGoogleMaps && (
+      {onOpenExternal && (
         <View style={styles.footer}>
-          <Button label="Spoken guidance in Google Maps" icon={LuVolume2} size="sm" onPress={onOpenGoogleMaps} />
+          <Button label={`Spoken guidance in ${externalNavName(source)}`} icon={LuVolume2} size="sm" onPress={onOpenExternal} />
         </View>
       )}
     </SheetModal>

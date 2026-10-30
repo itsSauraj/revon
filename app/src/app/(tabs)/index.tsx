@@ -20,9 +20,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FADE_IN, FADE_OUT } from '@/components/auth/field-motion';
 import { LayersSheet } from '@/components/map/layers-sheet';
-import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { type MapRef, MapView, Polyline } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
+import { NavPuck } from '@/components/nav/nav-puck';
 import { RecenterButton } from '@/components/nav/recenter-button';
 import { StepsSheet } from '@/components/nav/steps-sheet';
 import { TripCard } from '@/components/nav/trip-card';
@@ -35,26 +36,21 @@ import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { noWebOutline, Size, TextStyles } from '@/constants/theme';
+import { useLiveFix } from '@/hooks/use-live-fix';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
 import { centerOn } from '@/lib/camera';
 import { showMessage } from '@/lib/dialog';
+import { computeRoute, openExternalNav } from '@/lib/directions';
 import { decodePolyline, formatDistance, formatDuration } from '@/lib/geo';
-import {
-  computeRoute,
-  newSessionToken,
-  openGoogleMapsNav,
-  placeDetails,
-  placesAutocomplete,
-  type Route,
-  type Suggestion,
-} from '@/lib/google';
 import { startTracking } from '@/lib/location-task';
+import { useMapSource } from '@/lib/map-source';
 import { EASE_OUT, haptic, Timing } from '@/lib/motion';
+import { newSessionToken, resolvePlace, searchPlaces } from '@/lib/places';
 import { checkActiveRide, createRide } from '@/lib/rides';
 import { useSession } from '@/lib/session';
-import type { Place } from '@/lib/types';
+import type { Place, Route, Suggestion } from '@/lib/types';
 
 const FALLBACK_REGION = { latitude: 20, longitude: 0, latitudeDelta: 60, longitudeDelta: 60 };
 
@@ -80,7 +76,10 @@ export default function MapHome() {
   const { profile, uid, error: sessionError } = useSession();
   const map = useRef<MapRef>(null);
 
-  const [me, setMe] = useState<Fix | null>(null);
+  // Live fixes from the device; the quick first locate below fills in until the watch delivers.
+  const [firstFix, setFirstFix] = useState<Fix | null>(null);
+  const live = useLiveFix();
+  const me = live ?? firstFix;
   const [showSteps, setShowSteps] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [navH, setNavH] = useState(110);
@@ -99,6 +98,19 @@ export default function MapHome() {
   const [starting, setStarting] = useState(false);
   const [activeRide, setActiveRide] = useState<string | null>(null);
 
+  // A destination or route belongs to the source that produced it and must not be redrawn on the
+  // other map, so a source switch (never possible mid-navigation; Settings locks it) clears them.
+  const source = useMapSource();
+  const prevSource = useRef(source);
+  useEffect(() => {
+    if (prevSource.current === source) return;
+    prevSource.current = source;
+    setQuery('');
+    setDestination(null);
+    setSuggestions([]);
+    setRouteResult(null);
+  }, [source]);
+
   useFocusEffect(
     useCallback(() => {
       // Only offer "Back to my ride" for a ride this rider is really still in.
@@ -114,7 +126,7 @@ export default function MapHome() {
       const last = await Location.getLastKnownPositionAsync().catch(() => null);
       const pos = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       const p = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-      setMe({ ...p, heading: pos.coords.heading ?? -1, speed: pos.coords.speed ?? -1 });
+      setFirstFix({ ...p, heading: pos.coords.heading ?? -1, speed: pos.coords.speed ?? -1 });
       map.current?.animateToRegion({ ...p, latitudeDelta: 0.05, longitudeDelta: 0.05 }, 600);
     })().catch(() => {});
   }, []);
@@ -125,7 +137,7 @@ export default function MapHome() {
   useEffect(() => {
     if (!searching) return;
     const t = setTimeout(() => {
-      placesAutocomplete(query, me, searchToken).then(setSuggestions).catch(() => setSuggestions([]));
+      searchPlaces(query, me, searchToken).then(setSuggestions).catch(() => setSuggestions([]));
     }, 300);
     return () => clearTimeout(t);
     // `me` only biases results; don't re-query on every GPS update.
@@ -168,7 +180,7 @@ export default function MapHome() {
     Keyboard.dismiss();
     setSuggestions([]);
     try {
-      const place = await placeDetails(s.placeId, searchToken);
+      const place = await resolvePlace(s, searchToken);
       setSearchToken(newSessionToken());
       setQuery(place.name);
       setDestination(place);
@@ -210,22 +222,17 @@ export default function MapHome() {
     <View style={styles.screen}>
       <MapView
         ref={map}
-        provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        initialRegion={FALLBACK_REGION}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
+        // Read once per mount; a map that remounts after a source switch starts on the rider.
+        initialRegion={me ? { latitude: me.latitude, longitude: me.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 } : FALLBACK_REGION}
+        // The map's own dot gives way to the navigation puck while riding a route.
+        showsUserLocation={!nav.active}
         mapPadding={{
           top: insets.top + (nav.active ? 220 : 60),
           right: 0,
-          bottom: nav.active ? 32 : destination ? 250 : 70,
+          // Keeps the map logo and attribution above the trip card / destination card / pills.
+          bottom: nav.active ? 150 : destination ? 250 : 70,
           left: 0,
-        }}
-        onUserLocationChange={(e) => {
-          const c = e.nativeEvent.coordinate;
-          if (c) setMe({ latitude: c.latitude, longitude: c.longitude, heading: c.heading ?? -1, speed: c.speed ?? -1 });
         }}
         onPanDrag={nav.active ? nav.pause : undefined}
         onRegionChangeComplete={compass.onRegionChangeComplete}
@@ -243,6 +250,8 @@ export default function MapHome() {
               <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} zIndex={1} />
             )}
             <RouteLine coordinates={nav.ahead} width={6} />
+            {/* The arrow points up the screen while following heading-up, and at the real heading otherwise. */}
+            {me && <NavPuck coordinate={me} rotation={nav.heading - (nav.following ? nav.cameraHeading : compass.heading)} />}
           </>
         ) : (
           <RouteLine coordinates={routeCoords} />
@@ -318,7 +327,7 @@ export default function MapHome() {
               <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={[styles.suggestions, { backgroundColor: theme.surface }]}>
                 <FlatList
                   data={visibleSuggestions}
-                  keyExtractor={(s) => s.placeId}
+                  keyExtractor={(s) => s.id}
                   keyboardShouldPersistTaps="handled"
                   style={styles.suggestionList}
                   renderItem={({ item }) => (
@@ -446,7 +455,7 @@ export default function MapHome() {
         visible={showSteps && nav.active}
         steps={nav.route?.steps ?? []}
         onDismiss={() => setShowSteps(false)}
-        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name)}
       />
       <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
     </View>

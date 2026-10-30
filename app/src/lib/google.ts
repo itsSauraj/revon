@@ -1,34 +1,18 @@
+/**
+ * Google Maps Platform: Places API (New), Routes API and the Google Maps app hand-off. Used when
+ * the map source is Google (lib/map-source.ts); lib/places.ts and lib/directions.ts choose.
+ */
 import Constants from 'expo-constants';
 import { Linking, Platform } from 'react-native';
 
-import type { LatLng, Place } from './types';
+import { deviceLanguage } from './locale';
+import type { Avoid, LatLng, Place, Route, RouteWithSteps, Suggestion } from './types';
 
 const API_KEY: string = Constants.expoConfig?.extra?.googleApiKey ?? '';
-
-export type Suggestion = { placeId: string; main: string; secondary: string };
-
-export type Route = { polyline: string; distanceM: number; durationS: number };
-
-export type RouteStep = { instruction: string; maneuver: string; distanceM: number };
-
-export type RouteWithSteps = Route & { steps: RouteStep[] };
 
 /** Google's LatLng message accepts only these two fields; callers often pass richer objects. */
 function latLng(p: LatLng) {
   return { latitude: p.latitude, longitude: p.longitude };
-}
-
-/**
- * Language for Google results (BCP-47). Without it Google infers a language from the route's
- * location, which can return directions in a regional script the rider doesn't read.
- */
-function deviceLanguage(): string {
-  try {
-    const nav = typeof navigator !== 'undefined' ? (navigator as { language?: string }).language : undefined;
-    return nav || Intl.DateTimeFormat().resolvedOptions().locale || 'en';
-  } catch {
-    return 'en';
-  }
 }
 
 async function googlePost<T>(url: string, fieldMask: string, body: unknown): Promise<T> {
@@ -80,7 +64,7 @@ export async function placesAutocomplete(
     .map((s) => s.placePrediction)
     .filter((p): p is NonNullable<typeof p> => Boolean(p))
     .map((p) => ({
-      placeId: p.placeId,
+      id: p.placeId,
       main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? '',
       secondary: p.structuredFormat?.secondaryText?.text ?? '',
     }));
@@ -117,19 +101,8 @@ export async function placeDetails(placeId: string, sessionToken: string): Promi
 export async function computeRoute(
   origin: LatLng,
   destination: LatLng,
-  avoid?: { highways: boolean; tolls: boolean },
-): Promise<Route | null>;
-export async function computeRoute(
-  origin: LatLng,
-  destination: LatLng,
-  avoid: { highways: boolean; tolls: boolean } | undefined,
-  withSteps: true,
-): Promise<RouteWithSteps | null>;
-export async function computeRoute(
-  origin: LatLng,
-  destination: LatLng,
-  avoid: { highways: boolean; tolls: boolean } = { highways: false, tolls: false },
-  withSteps = false,
+  avoid: Avoid,
+  withSteps: boolean,
 ): Promise<Route | RouteWithSteps | null> {
   type Res = {
     routes?: {

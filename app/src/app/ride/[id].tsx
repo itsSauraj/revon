@@ -19,9 +19,10 @@ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanima
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LayersSheet } from '@/components/map/layers-sheet';
-import { type MapRef, MapView, Polyline, PROVIDER_GOOGLE } from '@/components/map/map-view';
+import { type MapRef, MapView, Polyline } from '@/components/map/map-view';
 import { RouteLine } from '@/components/map/route-line';
 import { NavBar } from '@/components/nav/nav-bar';
+import { NavPuck } from '@/components/nav/nav-puck';
 import { RecenterButton } from '@/components/nav/recenter-button';
 import { StepsSheet } from '@/components/nav/steps-sheet';
 import { AlertBanners } from '@/components/ride/alert-banner';
@@ -37,15 +38,17 @@ import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { hitSlopFor, MIN_HIT, PressableScale } from '@/components/ui/pressable-scale';
 import { Size, TextStyles } from '@/constants/theme';
+import { useLiveFix } from '@/hooks/use-live-fix';
 import { useMapHeading } from '@/hooks/use-map-heading';
 import { useRide } from '@/hooks/use-ride';
-import { type Fix, useRouteFollow } from '@/hooks/use-route-follow';
+import { useRouteFollow } from '@/hooks/use-route-follow';
 import { useTheme } from '@/hooks/use-theme';
 import { clearBanners, setupNotifications } from '@/lib/alerts';
 import { centerOn } from '@/lib/camera';
 import { confirmAction, shareText } from '@/lib/dialog';
-import { openGoogleMapsNav } from '@/lib/google';
+import { openExternalNav } from '@/lib/directions';
 import { getActiveRideId, isTracking, startTracking, stopTracking, type TrackingMode } from '@/lib/location-task';
+import type { MapSource } from '@/lib/map-source';
 import { haptic } from '@/lib/motion';
 import {
   clearRegroup,
@@ -59,6 +62,9 @@ import {
 import { useSession } from '@/lib/session';
 import type { LatLng } from '@/lib/types';
 
+/** Height of the SOS pill plus its gap above the panel. */
+const SOS_CLEARANCE = 68;
+
 export default function RideScreen() {
   const { id, invite } = useLocalSearchParams<{ id: string; invite?: string }>();
   const theme = useTheme();
@@ -67,12 +73,15 @@ export default function RideScreen() {
   const ride = useRide(id, uid);
   const map = useRef<MapRef>(null);
 
-  const [myPos, setMyPos] = useState<Fix | null>(null);
+  const myPos = useLiveFix();
   const [selected, setSelected] = useState<string | null>(null);
   const [showSteps, setShowSteps] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [navH, setNavH] = useState(110);
-  const nav = useRouteFollow(map, myPos, ride.meta?.avoid);
+  // The ride is shown on the source it was created with, whatever this phone's setting is: its
+  // destination and route are that source's content. Rides from before the field were all Google.
+  const rideSource: MapSource = ride.meta?.mapSource ?? 'google';
+  const nav = useRouteFollow(map, myPos, ride.meta?.avoid, rideSource);
   const compass = useMapHeading(map);
   /** The panel's live visible height, written on the UI thread; the bottom controls ride on it. */
   const sheetPos = useSharedValue(0);
@@ -228,20 +237,15 @@ export default function RideScreen() {
     <View style={styles.screen}>
       <MapView
         ref={map}
-        provider={PROVIDER_GOOGLE}
+        source={rideSource}
         style={StyleSheet.absoluteFill}
         initialRegion={{ ...meta.destination, latitudeDelta: 0.3, longitudeDelta: 0.3 }}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
+        // The map's own dot gives way to the navigation puck while riding a route.
+        showsUserLocation={!nav.active}
         // In the ride view, a larger top inset puts the rider lower on screen to show more road ahead.
         // The bottom inset is the panel's settled height, so the map never re-pads mid-drag.
-        mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH, left: 0 }}
-        onUserLocationChange={(e) => {
-          const c = e.nativeEvent.coordinate;
-          if (c) setMyPos({ latitude: c.latitude, longitude: c.longitude, heading: c.heading ?? -1, speed: c.speed ?? -1 });
-        }}
+        // Bottom inset clears the SOS pill above the panel as well, so the map logo and attribution stay visible.
+        mapPadding={{ top: insets.top + (nav.active ? 220 : 52), right: 0, bottom: panelH + SOS_CLEARANCE, left: 0 }}
         onPanDrag={nav.active ? nav.pause : undefined}
         onRegionChangeComplete={compass.onRegionChangeComplete}
         onLongPress={(e) => regroupAt(e.nativeEvent.coordinate, 'Regroup point')}>
@@ -253,6 +257,9 @@ export default function RideScreen() {
           <Polyline coordinates={nav.travelled} strokeColor={theme.routeRidden} strokeWidth={6} zIndex={1} />
         )}
         {nav.active && <RouteLine coordinates={nav.ahead} width={6} />}
+        {nav.active && myPos && (
+          <NavPuck coordinate={myPos} rotation={nav.heading - (nav.following ? nav.cameraHeading : compass.heading)} />
+        )}
         {nav.target && nav.target !== meta.destination && (
           <PlaceMarker coordinate={nav.target} icon={LuNavigation} title={nav.target.name} />
         )}
@@ -266,9 +273,12 @@ export default function RideScreen() {
             onCalloutPress={() => clearRegroup(id).catch(() => {})}
           />
         )}
-        {ride.riders.map((r) => (
-          <MemberMarker key={r.uid} rider={r} isMe={r.uid === uid} onPress={() => setSelected(r.uid)} />
-        ))}
+        {ride.riders
+          // While riding your own route the puck marks you; the "You" marker would sit under it.
+          .filter((r) => !(nav.active && r.uid === uid))
+          .map((r) => (
+            <MemberMarker key={r.uid} rider={r} isMe={r.uid === uid} onPress={() => setSelected(r.uid)} />
+          ))}
       </MapView>
 
       {nav.active && nav.target ? (
@@ -413,14 +423,16 @@ export default function RideScreen() {
           setSelected(null);
           nav.start(to);
         }}
+        source={rideSource}
       />
       <StepsSheet
         visible={showSteps && nav.active}
         steps={nav.route?.steps ?? []}
         onDismiss={() => setShowSteps(false)}
-        onOpenGoogleMaps={() => nav.target && openGoogleMapsNav(nav.target)}
+        onOpenExternal={() => nav.target && openExternalNav(nav.target, nav.target.name, rideSource)}
+        source={rideSource}
       />
-      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} />
+      <LayersSheet visible={showLayers} onDismiss={() => setShowLayers(false)} source={rideSource} />
     </View>
   );
 }

@@ -14,6 +14,7 @@ TypeScript and Expo Router.
   - [Environment variables](#environment-variables)
   - [Firebase config files](#firebase-config-files)
   - [Google Maps Platform](#google-maps-platform)
+  - [Map sources](#map-sources)
 - [3. Run](#3-run)
 - [When to rebuild](#when-to-rebuild)
 - [Scripts](#scripts)
@@ -134,6 +135,40 @@ Then create a key under **APIs & Services → Credentials → Create credentials
     restricted to those APIs → `EXPO_PUBLIC_GOOGLE_API_KEY`. Search and routes are web requests, so
     they **fail with an app-restricted key**.
 
+### Map sources
+
+The map, place search and routing come from one of two stacks, chosen per phone in **Settings → Map**.
+The two are kept apart: a destination or route is only ever shown on the map of the source that
+produced it (Google Maps Platform terms forbid Google content on non-Google maps). Switching the
+source clears the current destination, is locked while a ride view runs, and a group ride always
+shows on the source it was created with, whatever each rider's setting.
+Options a source can't offer (traffic on OpenStreetMap, the bicycling layer on Google's mobile SDKs)
+are left out of the layers sheet, and both the sheet and the Settings picker say so.
+
+| | Google Maps | OpenStreetMap |
+|---|---|---|
+| Map | Maps SDKs / Maps JavaScript API | MapLibre with [OpenFreeMap](https://openfreemap.org) vector tiles (no key, no limits) |
+| Search | Places API (New) | [Photon](https://photon.komoot.io) by komoot |
+| Routing | Routes API: two-wheeler where available, traffic-aware | [Valhalla](https://valhalla1.openstreetmap.de) motorcycle costing (FOSSGIS), OSRM as fallback |
+| Satellite / terrain | Google imagery | Esri World Imagery / OpenTopoMap rasters |
+| Traffic | yes | no free source |
+| 3D buildings | yes | yes (OpenMapTiles building heights) |
+| Bicycling | web only | Waymarked Trails cycling overlay |
+| Needs | Google API keys and Google Play services | nothing; works on phones without Google services |
+
+The default is Google when the build has a Google key, OpenStreetMap otherwise. The OpenStreetMap
+services are public fair-use servers: fine for development and small groups, and the map shows the
+required attribution. Before a large release, point `src/components/map/osm-styles.ts` and
+`src/lib/osm.ts` at paid tiers (for example MapTiler or Stadia tiles, Stadia or OpenRouteService
+routing) or your own servers.
+
+Switching sources needs no rebuild, but MapLibre is a native module: after pulling this change,
+rebuild the dev app once (`npx expo prebuild --platform android`, then `npm run android:dev`).
+
+On web, MapLibre runs its tile parsing in a web worker that Metro can't bundle, so `npm install`
+copies it from `node_modules` to `public/maplibre-gl-worker.mjs` (`scripts/sync-web-assets.js`,
+gitignored), where Expo serves it from the site root.
+
 ---
 
 ## 3. Run
@@ -236,6 +271,11 @@ keytool -list -v -keystore credentials/revon-release.keystore -alias revon    # 
 Testers install the file with `adb install -r <file>`, or open it on the phone (Android asks once to allow
 installs from that app). Add `-- --no-prebuild` to reuse the current `android/` folder.
 
+When `credentials/revon-release.env` exists, **every local build** (`npm run android:dev` too) is signed
+with the release keystore (`plugins/with-android-signing.js`). That is what makes Google sign-in work in
+dev builds: Google only accepts certificates registered in Firebase, and the standard debug key can't
+be registered for this package. Without the file the template's debug key is used, as before.
+
 ### First launch
 
 The app shows a welcome intro, then sign-in (Google or email), email verification for email accounts,
@@ -287,7 +327,9 @@ current app (it needs native modules); they're kept for reference.
 ```
 app/
 ├── app.config.ts             Expo config: keys, plugins, Firebase files, EAS project
+├── plugins/                  Expo config plugins (Android Kotlin pin for React Native Firebase)
 ├── scripts/start-usb.js      Dev server over USB
+├── scripts/build-apk.js      Release APK signed with the release keystore
 ├── src/
 │   ├── app/                  Screens (Expo Router)
 │   │   ├── welcome.tsx       First-launch intro
@@ -296,10 +338,12 @@ app/
 │   │   ├── ride/[id].tsx     Group ride screen
 │   │   └── join/             Join by code / invite link
 │   ├── components/           UI (ui/, map/, nav/, ride/, auth/, welcome/)
+│   │   └── map/              map-view picks a backend: google-map or osm-map (+ .web variants)
 │   ├── hooks/                use-ride, use-route-follow, use-map-heading, …
 │   ├── constants/theme.ts    Colors (light/dark), sizes, type scale
-│   └── lib/                  auth, db, firebase (native + .web variants), rides, google APIs,
-│                             validation, countries, session, location task, alerts, geo
+│   └── lib/                  auth, db, firebase (native + .web variants), rides, map-source,
+│                             places + directions (Google or OpenStreetMap), validation, countries,
+│                             session, location task, alerts, geo
 └── assets/revon.icon/        App icons
 ```
 
@@ -354,11 +398,13 @@ Expo Go and the simulator hide exactly the problems that matter.
 | Problem | Fix |
 |---|---|
 | **Blank map** (grey or dark, no streets) | Wrong or missing Maps key (look for the `[revon] … doesn't look like a Google API key` warning), or **Maps SDK for Android** not enabled. Fix `.env.local`, then `prebuild` + rebuild. |
+| **Black map** with OpenStreetMap on web, *Worker failed to load* | `public/maplibre-gl-worker.mjs` is missing (install ran with scripts disabled). Run `node scripts/sync-web-assets.js`. |
 | **White screen** on the phone | The dev server isn't running or stopped responding. Restart it with `npm run start:usb:clear`, then fully close and reopen revon. |
 | *Failed to connect to 192.168.x.x:8081* | The phone can't reach your PC over the network: use `npm run start:usb`. |
 | `adb reverse` prints the adb help text | Old adb 1.0.31 on PATH: see [the Windows note](#environment-variables-for-android-builds-one-time). |
 | Search or routes fail with *Google API 400/403* | Places API (New) / Routes API not enabled, or the key is restricted to Android/iOS apps. |
 | Sign-in or SMS errors | See the [backend troubleshooting table](../backend/README.md#troubleshooting). |
+| **Google sign-in fails** in a dev build (`DEVELOPER_ERROR`, the account picker closes at once) | The build is signed with a key Firebase doesn't know. Put the release keystore in `credentials/` (see [Shareable APK](#shareable-apk-local)), then `npx expo prebuild --platform android` and rebuild; or register the build's SHA-1 in Firebase. |
 | *Firebase is not configured* | Missing `app/google-services.json` (rebuild after adding it), or empty `EXPO_PUBLIC_FIREBASE_*` (web). |
 
 ### Checks before committing
